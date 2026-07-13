@@ -1,0 +1,39 @@
+[package]
+name = "lightraw"
+version = "0.1.0"
+description = "A lightweight, non-destructive RAW photo editor"
+authors = ["LightRAW contributors"]
+edition = "2021"
+
+[package.metadata.vcpkg]
+git = "https://github.com/microsoft/vcpkg"
+rev = "2026.05.25"
+dependencies = []
+
+[package.metadata.vcpkg.target]
+x86_64-pc-windows-msvc = { triplet = "x64-windows", dependencies = ["libraw", "libheif"] }
+aarch64-pc-windows-msvc = { triplet = "arm64-windows", dependencies = ["libraw", "libheif"] }
+
+[lib]
+name = "lightraw_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+cc = "1"
+pkg-config = "0.3"
+tauri-build = { version = "2", features = [] }
+vcpkg = "0.2"
+
+[dependencies]
+half = "2.7"
+fast_image_resize = { version = "6.0.0", features = ["image", "rayon"] }
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "tiff"] }
+libheif-rs = { version = "2.7.0", default-features = false, features = ["v1_21"] }
+serde = { version = "1", features = ["derive"] }
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+thiserror = "2"
+turbojpeg = { version = "1.4.0", features = ["image"] }
+
+[dev-dependencies]
+tempfile = "3"

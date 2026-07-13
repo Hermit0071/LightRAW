@@ -1,0 +1,42 @@
+name: macOS and Windows checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install macOS native libraries
+        if: runner.os == 'macOS'
+        run: brew install cmake pkg-config libraw libheif
+
+      - name: Install Windows build tools
+        if: runner.os == 'Windows'
+        run: choco install nasm -y
+
+      - name: Build Windows native libraries
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cargo install cargo-vcpkg --version 0.1.7
+          cd src-tauri
+          cargo vcpkg build
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:run
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - run: npm run build
