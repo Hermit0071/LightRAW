@@ -1,0 +1,34 @@
+name: Feature request
+description: Suggest a focused improvement to LightRAW.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before submitting, please search existing Issues and Discussions. For broad design proposals, start a Discussion first.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or workflow
+      description: What photo-editing task is currently difficult or impossible?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the smallest useful behavior and user interface.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: I understand that LightRAW intentionally excludes cloud sync, AI selection, HDR/panorama merging, and full ICC workflows from its current scope.
+          required: true

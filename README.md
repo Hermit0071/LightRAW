@@ -1,8 +1,20 @@
 # LightRAW
 
+> A lightweight, GPU-accelerated and non-destructive RAW photo editor for macOS and Windows.
+>
+> RAW & HEIC support · local masking and adjustment layers · batch export · no cloud account required.
+
+[English overview](#english-overview) · [Build from source](#macos-开发与编译) · [Contributing](CONTRIBUTING.md) · [Latest source release](https://github.com/Hermit0071/LightRAW/releases/latest)
+
 LightRAW 是一款面向 macOS 和 Windows 的轻量级、非破坏性 RAW 照片编辑器。它聚焦摄影后期中最常用的图库管理、基础调色、HSL、曲线、蒙版、调整图层和批量导出，目标是提供一个容易安装、容易理解、也容易继续开发的 Lightroom“够用版”替代方案。
 
 本仓库包含完整源代码、前后端依赖锁文件、Tauri 桌面配置、自动化测试和 macOS/Windows 构建说明。克隆或下载源码后，可按下文步骤在本地运行和编译。
+
+## English overview
+
+LightRAW is a cross-platform desktop RAW editor built for photographers who want a capable local workflow without a cloud account or destructive edits. It supports major camera RAW formats, JPEG/PNG/TIFF, HEIF/HEIC, real-time WebGL 2 preview, HSL and tone curves, masks, adjustment layers, presets, library file management, and batch JPEG/PNG/TIFF export.
+
+Clone this repository and follow the macOS or Windows build instructions below. Feature requests and bug reports are welcome through the GitHub templates; see [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 ## 项目优点
 
@@ -168,6 +180,12 @@ LIGHTRAW_REAL_IMAGE=/path/to/photo.ARW \
 ## 当前边界
 
 LightRAW 目前不包含镜头配置文件自动校正、HDR/全景合并、AI 主体选择、AI 降噪、完整 ICC 工作流、视频编辑、云同步和插件系统。项目仍处于早期版本，建议处理重要照片前保留原始文件和独立备份。
+
+## 社区与贡献
+
+- 使用问题、功能想法和工作流讨论：前往 [GitHub Discussions](https://github.com/Hermit0071/LightRAW/discussions)。
+- 发现问题或提出新功能：使用仓库的 Issue 模板。
+- 准备贡献代码或文档：阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [MIT License](LICENSE)。
 
 ## 许可证
 

@@ -1,0 +1,53 @@
+name: Bug report
+description: Report a reproducible problem in LightRAW.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve LightRAW. Please do not upload private photos or camera files you are not allowed to share.
+  - type: input
+    id: version
+    attributes:
+      label: LightRAW version or commit
+      placeholder: "v0.1.0 or 1234567"
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS
+        - Windows
+    validations:
+      required: true
+  - type: input
+    id: photo-format
+    attributes:
+      label: Photo format and camera model (if relevant)
+      placeholder: "ARW, Sony A7 IV"
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Import ...
+        2. Open ...
+        3. Adjust ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include any error message, screenshot, or short screen recording. Do not share private photos.
+    validations:
+      required: true
