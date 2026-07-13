@@ -697,7 +697,7 @@ export default function App() {
           <button className={`tool-button ${activeTool === "preset" ? "active" : ""}`} type="button" title="预设 · P" disabled={workspaceBusy} onClick={() => setActiveTool("preset")}><PresetIcon /><span>预设</span></button>
           <button className={`tool-button ${activeTool === "export" ? "active" : ""}`} type="button" disabled={(!photo && selectedPhotoIds.length === 0) || workspaceBusy}
             title="导出 · ⌘/Ctrl+Shift+E（兼容 X）" onClick={() => setActiveTool("export")}><ExportIcon /><span>导出</span></button>
-          <div className="gpu-badge"><i />GPU</div>
+          <div className={`gpu-badge ${gpuStatus}`}><i />GPU</div>
         </aside>
       </section>
     </main>
