@@ -1,6 +1,9 @@
 import type { DevelopRecipe } from "../editor/develop-recipe";
 import { HSL_CHANNELS } from "../editor/hsl";
-import { buildCurveLut } from "../editor/tone-curve";
+import { MAX_LAYERS } from "../editor/masks";
+import { buildCurveLut, type ToneCurves } from "../editor/tone-curve";
+import { halfToFloat } from "./histogram";
+import { MASK_TEXTURE_SIZE, layerRasterKey, rasterizeLayerMask } from "./mask-rasterizer";
 import { COLOR_ENGINE_CONSTANTS } from "./color-engine";
 import { toPreviewUniforms } from "./uniforms";
 
@@ -18,6 +21,8 @@ const FRAGMENT_SHADER = `#version 300 es
 precision highp float;
 uniform sampler2D u_image;
 uniform sampler2D u_curve;
+uniform highp sampler2DArray u_masks;
+uniform highp sampler2DArray u_mask_curves;
 uniform vec2 u_texel_size;
 uniform vec4 u_crop;
 uniform float u_crop_aspect;
@@ -44,6 +49,14 @@ uniform float u_sharpening_radius;
 uniform float u_sharpening_detail;
 uniform float u_luminance_noise;
 uniform float u_color_noise;
+uniform int u_mask_count;
+uniform int u_mask_overlay_layer;
+uniform float u_mask_opacity[${MAX_LAYERS}];
+uniform vec4 u_mask_basic0[${MAX_LAYERS}];
+uniform vec4 u_mask_basic1[${MAX_LAYERS}];
+uniform vec4 u_mask_basic2[${MAX_LAYERS}];
+uniform vec4 u_mask_basic3[${MAX_LAYERS}];
+uniform vec3 u_mask_hsl[${MAX_LAYERS * 8}];
 in vec2 v_uv;
 out vec4 out_color;
 
@@ -92,8 +105,7 @@ vec3 sample_cross(vec2 uv, vec2 offset) {
   ) * 0.25;
 }
 
-vec3 filter_detail(vec2 uv) {
-  vec3 centre = texture(u_image, uv).rgb;
+vec3 filter_detail(vec2 uv, vec3 centre, out float fine_detail, out float coarse_detail) {
   vec3 fine = sample_cross(uv, u_texel_size);
   vec3 coarse = sample_cross(uv, u_texel_size * 4.0);
   float centre_luma = luminance(centre);
@@ -103,8 +115,8 @@ vec3 filter_detail(vec2 uv) {
   vec3 filtered = mix(centre, colour_smoothed, u_color_noise * 0.72);
   filtered += vec3((fine_luma - centre_luma) * u_luminance_noise * 0.72);
 
-  float fine_detail = centre_luma - fine_luma;
-  float coarse_detail = centre_luma - coarse_luma;
+  fine_detail = centre_luma - fine_luma;
+  coarse_detail = centre_luma - coarse_luma;
   float radius_mix = (u_sharpening_radius - 0.5) / 2.5;
   float sharpening_detail = mix(fine_detail, coarse_detail, radius_mix);
   float sharpen_gain = u_sharpening_amount * (0.3 + u_sharpening_detail * 0.9);
@@ -135,6 +147,37 @@ vec3 apply_tone(vec3 color) {
   value = adjust_zone(value, u_blacks, 1.0 - smoothstep(0.02, 0.32, value), 0.48);
   value = adjust_zone(value, u_whites, smoothstep(0.48, 1.0, value), 0.48);
   return color * max(value, 0.0) / before;
+}
+
+vec3 apply_mask_basic(vec3 color, int index, float fine_detail, float coarse_detail) {
+  vec4 basic0 = u_mask_basic0[index];
+  vec4 basic1 = u_mask_basic1[index];
+  vec4 basic2 = u_mask_basic2[index];
+  vec4 basic3 = u_mask_basic3[index];
+  color += vec3(fine_detail * basic2.x * 0.38 + coarse_detail * basic2.y * 0.62);
+  vec3 gains = exp2(vec3(
+    basic0.x * ${COLOR_ENGINE_CONSTANTS.temperatureGain} + basic0.y * ${COLOR_ENGINE_CONSTANTS.tintRedBlueGain},
+    -basic0.y * ${COLOR_ENGINE_CONSTANTS.tintGreenGain},
+    -basic0.x * ${COLOR_ENGINE_CONSTANTS.temperatureGain} + basic0.y * ${COLOR_ENGINE_CONSTANTS.tintRedBlueGain}
+  ));
+  color = color * gains * exp2(basic0.z);
+  float before = max(luminance(color), 0.00001);
+  float value = before;
+  value = adjust_zone(value, basic1.y, 1.0 - smoothstep(${COLOR_ENGINE_CONSTANTS.shadowStart}, ${COLOR_ENGINE_CONSTANTS.shadowEnd}, value), ${COLOR_ENGINE_CONSTANTS.zoneStrength});
+  value = adjust_zone(value, basic1.x, smoothstep(${COLOR_ENGINE_CONSTANTS.highlightStart}, ${COLOR_ENGINE_CONSTANTS.highlightEnd}, value), ${COLOR_ENGINE_CONSTANTS.zoneStrength});
+  value = adjust_zone(value, basic1.w, 1.0 - smoothstep(0.02, 0.32, value), 0.48);
+  value = adjust_zone(value, basic1.z, smoothstep(0.48, 1.0, value), 0.48);
+  color *= max(value, 0.0) / before;
+  color = max((color - ${COLOR_ENGINE_CONSTANTS.middleGray}) * exp2(basic0.w) + ${COLOR_ENGINE_CONSTANTS.middleGray}, vec3(0.0));
+  color = max((color - 0.12) * (1.0 + basic2.z * 0.42) + 0.12 - basic2.z * 0.025, vec3(0.0));
+  float lightness = luminance(color);
+  float chroma = max(max(color.r, color.g), color.b) - min(min(color.r, color.g), color.b);
+  float saturation_scale = max(0.0, 1.0 + basic3.x + basic2.w * (1.0 - min(chroma, 1.0)));
+  return vec3(lightness) + (color - vec3(lightness)) * saturation_scale;
+}
+
+float mask_coverage(int index, vec2 source_uv) {
+  return texture(u_masks, vec3(source_uv, float(index))).r * u_mask_opacity[index];
 }
 
 vec3 rgb_to_hsl(vec3 color) {
@@ -188,8 +231,33 @@ vec3 apply_curve(vec3 color) {
   );
 }
 
+vec3 apply_mask_hsl(vec3 color, int mask_index) {
+  vec3 hsl = rgb_to_hsl(clamp(color, 0.0, 1.0));
+  float centres[8] = float[8](0.0, 30.0, 60.0, 120.0, 180.0, 240.0, 275.0, 315.0);
+  vec3 edit = vec3(0.0);
+  for (int colour_index = 0; colour_index < 8; colour_index++) {
+    edit += u_mask_hsl[mask_index * 8 + colour_index] * hue_weight(hsl.x, centres[colour_index]);
+  }
+  hsl.x = mod(hsl.x + edit.x * 30.0 + 360.0, 360.0);
+  hsl.y = clamp(hsl.y * (1.0 + edit.y), 0.0, 1.0);
+  hsl.z = clamp(hsl.z + edit.z * 0.5, 0.0, 1.0);
+  return hsl_to_rgb(hsl);
+}
+
+vec3 apply_mask_curve(vec3 color, int index) {
+  return vec3(
+    texture(u_mask_curves, vec3(clamp(color.r, 0.0, 1.0), 0.5, float(index))).r,
+    texture(u_mask_curves, vec3(clamp(color.g, 0.0, 1.0), 0.5, float(index))).g,
+    texture(u_mask_curves, vec3(clamp(color.b, 0.0, 1.0), 0.5, float(index))).b
+  );
+}
+
 void main() {
-  vec3 color = filter_detail(map_uv(v_uv));
+  vec2 source_uv = map_uv(v_uv);
+  vec3 source_color = texture(u_image, source_uv).rgb;
+  float fine_detail;
+  float coarse_detail;
+  vec3 color = filter_detail(source_uv, source_color, fine_detail, coarse_detail);
   color = apply_white_balance(color) * exp2(u_exposure);
   color = apply_tone(color);
   color = max((color - ${COLOR_ENGINE_CONSTANTS.middleGray}) * exp2(u_contrast) + ${COLOR_ENGINE_CONSTANTS.middleGray}, vec3(0.0));
@@ -199,7 +267,20 @@ void main() {
   float saturation_scale = max(0.0, 1.0 + u_saturation + u_vibrance * (1.0 - min(chroma, 1.0)));
   color = vec3(lightness) + (color - vec3(lightness)) * saturation_scale;
   color = apply_curve(apply_hsl(color));
-  out_color = vec4(linear_to_srgb(color), 1.0);
+  for (int index = 0; index < ${MAX_LAYERS}; index++) {
+    if (index >= u_mask_count) break;
+    float coverage = mask_coverage(index, source_uv);
+    if (coverage <= 0.0001) continue;
+    vec3 adjusted = apply_mask_basic(color, index, fine_detail, coarse_detail);
+    adjusted = apply_mask_curve(apply_mask_hsl(adjusted, index), index);
+    color = mix(color, adjusted, coverage);
+  }
+  vec3 display_color = linear_to_srgb(color);
+  if (u_mask_overlay_layer >= 0) {
+    float overlay = texture(u_masks, vec3(source_uv, float(u_mask_overlay_layer))).r;
+    display_color = mix(display_color, vec3(0.95, 0.12, 0.18), overlay * 0.38);
+  }
+  out_color = vec4(display_color, 1.0);
 }`;
 
 export interface PreviewMetrics {
@@ -219,15 +300,21 @@ export class PreviewRenderer {
   private readonly program: WebGLProgram;
   private readonly imageTexture: WebGLTexture;
   private readonly curveTexture: WebGLTexture;
+  private readonly maskTexture: WebGLTexture;
+  private readonly maskCurveTexture: WebGLTexture;
   private readonly resizeObserver: ResizeObserver;
   private recipe: DevelopRecipe;
   private imageWidth = 0;
   private imageHeight = 0;
+  private sourcePixels: Uint16Array | null = null;
   private frameRequest = 0;
   private scheduledAt = 0;
   private lastFrameAt = 0;
   private readonly frameIntervals: number[] = [];
   private lastLayout: PreviewLayout | null = null;
+  private maskRasterKeys: string[] = [];
+  private maskCurveLayers: ToneCurves[] = [];
+  private maskOverlayLayerId: string | null = null;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -248,6 +335,8 @@ export class PreviewRenderer {
     this.program = createProgram(gl, VERTEX_SHADER, FRAGMENT_SHADER);
     this.imageTexture = createTexture(gl, gl.LINEAR);
     this.curveTexture = createTexture(gl, gl.LINEAR);
+    this.maskTexture = createMaskTexture(gl);
+    this.maskCurveTexture = createMaskCurveTexture(gl);
     this.recipe = initial;
 
     gl.bindTexture(gl.TEXTURE_2D, this.imageTexture);
@@ -265,17 +354,26 @@ export class PreviewRenderer {
     this.imageWidth = width;
     this.imageHeight = height;
     const data = new Uint16Array(pixels.buffer, pixels.byteOffset, pixels.byteLength / 2);
+    this.sourcePixels = data;
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, this.imageTexture);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, width, height, 0, gl.RGBA, gl.HALF_FLOAT, data);
+    this.uploadLayers(true);
     this.scheduleRender();
   }
 
   setRecipe(recipe: DevelopRecipe): void {
     const curveChanged = recipe.curves !== this.recipe.curves;
+    const layersChanged = recipe.layers !== this.recipe.layers;
     this.recipe = recipe;
     if (curveChanged) this.uploadCurve();
+    if (layersChanged) this.uploadLayers();
+    this.scheduleRender();
+  }
+
+  setMaskOverlay(layerId: string | null): void {
+    this.maskOverlayLayerId = layerId;
     this.scheduleRender();
   }
 
@@ -284,6 +382,8 @@ export class PreviewRenderer {
     this.resizeObserver.disconnect();
     this.gl.deleteTexture(this.imageTexture);
     this.gl.deleteTexture(this.curveTexture);
+    this.gl.deleteTexture(this.maskTexture);
+    this.gl.deleteTexture(this.maskCurveTexture);
     this.gl.deleteProgram(this.program);
   }
 
@@ -292,6 +392,48 @@ export class PreviewRenderer {
     gl.bindTexture(gl.TEXTURE_2D, this.curveTexture);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, 256, 1, 0, gl.RGBA, gl.FLOAT, buildCurveLut(this.recipe.curves));
+  }
+
+  private uploadLayers(force = false): void {
+    if (this.imageWidth === 0 || this.imageHeight === 0) return;
+    const active = this.recipe.layers.filter((layer) => layer.visible).slice(0, MAX_LAYERS);
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.maskTexture);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+    const aspect = this.imageWidth / this.imageHeight;
+    const sampleSource = (point: { x: number; y: number }) => {
+      if (!this.sourcePixels) return [0, 0, 0] as const;
+      const x = Math.min(this.imageWidth - 1, Math.max(0, Math.floor(point.x * this.imageWidth)));
+      const y = Math.min(this.imageHeight - 1, Math.max(0, Math.floor(point.y * this.imageHeight)));
+      const offset = (y * this.imageWidth + x) * 4;
+      return [halfToFloat(this.sourcePixels[offset]), halfToFloat(this.sourcePixels[offset + 1]), halfToFloat(this.sourcePixels[offset + 2])] as const;
+    };
+    active.forEach((adjustmentLayer, layer) => {
+      const rasterKey = layerRasterKey(adjustmentLayer);
+      if (force || this.maskRasterKeys[layer] !== rasterKey) {
+        gl.texSubImage3D(
+          gl.TEXTURE_2D_ARRAY,
+          0,
+          0,
+          0,
+          layer,
+          MASK_TEXTURE_SIZE,
+          MASK_TEXTURE_SIZE,
+          1,
+          gl.RED,
+          gl.UNSIGNED_BYTE,
+          rasterizeLayerMask(adjustmentLayer, MASK_TEXTURE_SIZE, aspect, sampleSource),
+        );
+      }
+      if (force || this.maskCurveLayers[layer] !== adjustmentLayer.curves) {
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.maskCurveTexture);
+        gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, 256, 1, 1, gl.RGBA, gl.FLOAT, buildCurveLut(adjustmentLayer.curves));
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.maskTexture);
+      }
+    });
+    this.maskRasterKeys = active.map(layerRasterKey);
+    this.maskCurveLayers = active.map((layer) => layer.curves);
   }
 
   private scheduleRender(): void {
@@ -353,6 +495,12 @@ export class PreviewRenderer {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.curveTexture);
     setUniform1i(gl, this.program, "u_curve", 1);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.maskTexture);
+    setUniform1i(gl, this.program, "u_masks", 2);
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.maskCurveTexture);
+    setUniform1i(gl, this.program, "u_mask_curves", 3);
     setUniform2f(gl, this.program, "u_texel_size", 1 / this.imageWidth, 1 / this.imageHeight);
     setUniform4f(gl, this.program, "u_crop", crop.x, crop.y, crop.width, crop.height);
     setUniform1f(gl, this.program, "u_crop_aspect", cropWidth / cropHeight);
@@ -371,9 +519,42 @@ export class PreviewRenderer {
     setUniform1f(gl, this.program, "u_sharpening_detail", detail.sharpeningDetail / 100);
     setUniform1f(gl, this.program, "u_luminance_noise", detail.luminanceNoiseReduction / 100);
     setUniform1f(gl, this.program, "u_color_noise", detail.colorNoiseReduction / 100);
+    const activeLayers = this.recipe.layers.filter((layer) => layer.visible).slice(0, MAX_LAYERS);
+    setUniform1i(gl, this.program, "u_mask_overlay_layer", activeLayers.findIndex((layer) => layer.id === this.maskOverlayLayerId));
+    this.uploadMaskUniforms();
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.flush();
     this.reportMetrics(frameStartedAt);
+  }
+
+  private uploadMaskUniforms(): void {
+    const gl = this.gl;
+    const active = this.recipe.layers.filter((layer) => layer.visible).slice(0, MAX_LAYERS);
+    const opacity = new Float32Array(MAX_LAYERS);
+    const basic0 = new Float32Array(MAX_LAYERS * 4);
+    const basic1 = new Float32Array(MAX_LAYERS * 4);
+    const basic2 = new Float32Array(MAX_LAYERS * 4);
+    const basic3 = new Float32Array(MAX_LAYERS * 4);
+    const maskHsl = new Float32Array(MAX_LAYERS * 8 * 3);
+    active.forEach((layer, index) => {
+      opacity[index] = Math.min(1, Math.max(0, layer.opacity));
+      const value = toPreviewUniforms(layer.adjustments);
+      basic0.set([value.temperature, value.tint, value.exposure, value.contrast], index * 4);
+      basic1.set([value.highlights, value.shadows, value.whites, value.blacks], index * 4);
+      basic2.set([value.texture, value.clarity, value.dehaze, value.vibrance], index * 4);
+      basic3.set([value.saturation, 0, 0, 0], index * 4);
+      HSL_CHANNELS.forEach((name, channelIndex) => {
+        const channel = layer.hsl[name];
+        maskHsl.set([channel.hue / 100, channel.saturation / 100, channel.luminance / 100], (index * 8 + channelIndex) * 3);
+      });
+    });
+    setUniform1i(gl, this.program, "u_mask_count", active.length);
+    setUniform1fv(gl, this.program, "u_mask_opacity[0]", opacity);
+    setUniform4fv(gl, this.program, "u_mask_basic0[0]", basic0);
+    setUniform4fv(gl, this.program, "u_mask_basic1[0]", basic1);
+    setUniform4fv(gl, this.program, "u_mask_basic2[0]", basic2);
+    setUniform4fv(gl, this.program, "u_mask_basic3[0]", basic3);
+    setUniform3fv(gl, this.program, "u_mask_hsl[0]", maskHsl);
   }
 
   private reportMetrics(frameStartedAt: number): void {
@@ -405,6 +586,30 @@ function createTexture(gl: WebGL2RenderingContext, filter: number): WebGLTexture
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return texture;
+}
+
+function createMaskTexture(gl: WebGL2RenderingContext): WebGLTexture {
+  const texture = gl.createTexture();
+  if (!texture) throw new Error("无法创建 GPU 蒙版纹理。");
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.R8, MASK_TEXTURE_SIZE, MASK_TEXTURE_SIZE, MAX_LAYERS);
+  return texture;
+}
+
+function createMaskCurveTexture(gl: WebGL2RenderingContext): WebGLTexture {
+  const texture = gl.createTexture();
+  if (!texture) throw new Error("无法创建 GPU 局部曲线纹理。");
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA16F, 256, 1, MAX_LAYERS);
   return texture;
 }
 
@@ -462,4 +667,10 @@ function setUniform4f(gl: WebGL2RenderingContext, program: WebGLProgram, name: s
 }
 function setUniform3fv(gl: WebGL2RenderingContext, program: WebGLProgram, name: string, values: Float32Array): void {
   gl.uniform3fv(uniform(gl, program, name), values);
+}
+function setUniform1fv(gl: WebGL2RenderingContext, program: WebGLProgram, name: string, values: Float32Array): void {
+  gl.uniform1fv(uniform(gl, program, name), values);
+}
+function setUniform4fv(gl: WebGL2RenderingContext, program: WebGLProgram, name: string, values: Float32Array): void {
+  gl.uniform4fv(uniform(gl, program, name), values);
 }

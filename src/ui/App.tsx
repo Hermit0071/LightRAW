@@ -1,7 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import { chooseAndOpenImage, type PreviewInfo } from "../bridge/images";
 import { createDefaultDevelopRecipe, type DevelopRecipe } from "../editor/develop-recipe";
+import {
+  addLayer,
+  addMaskComponent,
+  createAdjustmentLayer,
+  createMaskComponent,
+  removeLayer,
+  removeMaskComponent,
+  setMaskComponentVisibility,
+  updateLayer,
+  type AdjustmentLayer,
+  type MaskCombineMode,
+  type MaskComponent,
+  type MaskPoint,
+  type MaskType,
+} from "../editor/masks";
 import { calculateHistogram, type HistogramData } from "../renderer/histogram";
+import { halfToFloat } from "../renderer/histogram";
 import {
   PreviewRenderer,
   type PreviewLayout,
@@ -10,8 +26,10 @@ import {
 import { AdjustmentPanel } from "./AdjustmentPanel";
 import { CropOverlay } from "./CropOverlay";
 import { CropPanel } from "./CropPanel";
+import { MaskOverlay } from "./MaskOverlay";
+import { MaskPanel, type BrushSettings } from "./MaskPanel";
 
-type ActiveTool = "adjust" | "crop";
+type ActiveTool = "adjust" | "crop" | "mask";
 const FULL_CROP = { x: 0, y: 0, width: 1, height: 1 } as const;
 
 export default function App() {
@@ -26,6 +44,11 @@ export default function App() {
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [message, setMessage] = useState("");
   const [metrics, setMetrics] = useState<PreviewMetrics | null>(null);
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
+  const [selectedMaskId, setSelectedMaskId] = useState<string | null>(null);
+  const [brush, setBrush] = useState<BrushSettings>({ size: 0.08, feather: 0.65, flow: 0.8 });
+  const selectedLayer = recipe.layers.find((layer) => layer.id === selectedLayerId) ?? null;
+  const selectedMask = selectedLayer?.mask.components.find((mask) => mask.id === selectedMaskId && mask.visible) ?? null;
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -46,6 +69,10 @@ export default function App() {
       : recipe;
     rendererRef.current?.setRecipe(displayed);
   }, [activeTool, recipe]);
+
+  useEffect(() => {
+    rendererRef.current?.setMaskOverlay(activeTool === "mask" ? selectedLayerId : null);
+  }, [activeTool, selectedLayerId]);
 
   useEffect(() => {
     if (!sourcePixels || !photo) {
@@ -78,12 +105,68 @@ export default function App() {
       setRecipe(neutral);
       setPhoto(opened.info);
       setActiveTool("adjust");
+      setSelectedLayerId(null);
+      setSelectedMaskId(null);
       setStatus("ready");
       setMessage("");
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : String(error));
     }
+  }
+
+  function createPhotoMask(type: MaskType) {
+    const mask = createMaskComponent(type, crypto.randomUUID());
+    const layer = createAdjustmentLayer(crypto.randomUUID(), mask);
+    setRecipe((current) => ({ ...current, layers: addLayer(current.layers, layer) }));
+    setSelectedLayerId(layer.id);
+    setSelectedMaskId(mask.id);
+  }
+
+  function addSelection(type: MaskType, mode: MaskCombineMode) {
+    if (!selectedLayer) return;
+    const mask = createMaskComponent(type, crypto.randomUUID(), selectedLayer.mask.components.length === 0 ? "add" : mode);
+    changeLayer(addMaskComponent(selectedLayer, mask));
+    setSelectedMaskId(mask.id);
+  }
+
+  function changeLayer(layer: AdjustmentLayer) {
+    setRecipe((current) => ({ ...current, layers: updateLayer(current.layers, layer) }));
+  }
+
+  function changeMask(layerId: string, mask: MaskComponent) {
+    setRecipe((current) => ({ ...current, layers: current.layers.map((layer) => layer.id === layerId
+      ? { ...layer, mask: { ...layer.mask, components: layer.mask.components.map((value) => value.id === mask.id ? mask : value) } }
+      : layer) }));
+  }
+
+  function deletePhotoLayer(id: string) {
+    setRecipe((current) => ({ ...current, layers: removeLayer(current.layers, id) }));
+    if (selectedLayerId === id) {
+      setSelectedLayerId(null);
+      setSelectedMaskId(null);
+    }
+  }
+
+  function deleteMask(layerId: string, id: string) {
+    setRecipe((current) => ({ ...current, layers: current.layers.map((layer) => layer.id === layerId
+      ? removeMaskComponent(layer, id)
+      : layer) }));
+    if (selectedMaskId === id) setSelectedMaskId(null);
+  }
+
+  function changeMaskVisibility(layerId: string, id: string, visible: boolean) {
+    setRecipe((current) => ({ ...current, layers: current.layers.map((layer) => layer.id === layerId
+      ? setMaskComponentVisibility(layer, id, visible)
+      : layer) }));
+  }
+
+  function sampleSource(point: MaskPoint): readonly [number, number, number] {
+    if (!sourcePixels || !photo) return [0.5, 0.5, 0.5];
+    const x = Math.min(photo.width - 1, Math.max(0, Math.floor(point.x * photo.width)));
+    const y = Math.min(photo.height - 1, Math.max(0, Math.floor(point.y * photo.height)));
+    const offset = (y * photo.width + x) * 4;
+    return [halfToFloat(sourcePixels[offset]), halfToFloat(sourcePixels[offset + 1]), halfToFloat(sourcePixels[offset + 2])];
   }
 
   function resetCurrentPanel() {
@@ -97,7 +180,7 @@ export default function App() {
     <main className="app-shell">
       <header className="topbar">
         <div className="brand" aria-label="LightRAW">
-          <span className="brand-mark">Lr</span><span className="brand-name">LightRAW</span><span className="phase-tag">PHASE 02</span>
+          <span className="brand-mark">Lr</span><span className="brand-name">LightRAW</span><span className="phase-tag">PHASE 03</span>
         </div>
         <div className="file-summary">
           {photo ? <><strong>{photo.fileName}</strong><span>{photo.width} × {photo.height}</span></> : <span>非破坏性 RAW 工作区</span>}
@@ -115,7 +198,7 @@ export default function App() {
         <button className={`tool-button ${activeTool === "crop" ? "active" : ""}`} type="button" disabled={!photo} onClick={() => setActiveTool("crop")}>
           <CropIcon /><span>裁剪</span>
         </button>
-        <button className="tool-button disabled" type="button" aria-label="蒙版，阶段三开放" disabled><MaskIcon /><span>蒙版</span></button>
+        <button className={`tool-button ${activeTool === "mask" ? "active" : ""}`} type="button" disabled={!photo} onClick={() => setActiveTool("mask")}><MaskIcon /><span>蒙版</span></button>
         <div className="gpu-badge"><i />GPU</div>
       </aside>
 
@@ -131,6 +214,9 @@ export default function App() {
           <CropOverlay layout={previewLayout} geometry={recipe.geometry}
             onChange={(crop) => setRecipe((current) => ({ ...current, geometry: { ...current.geometry, crop, aspect: "free" } }))} />
         )}
+        {photo && activeTool === "mask" && previewLayout && selectedMask && <MaskOverlay layout={previewLayout} mask={selectedMask} geometry={recipe.geometry}
+          imageWidth={photo.width} imageHeight={photo.height} brush={brush}
+          onUpdate={(mask) => selectedLayerId && changeMask(selectedLayerId, mask)} onSample={sampleSource} />}
         {photo && <div className="preview-status">
           <span>{photo.format}</span>{photo.camera && <span>{photo.camera}</span>}
           <span className="live"><i />实时预览{metrics && ` · ${metrics.fps || "—"} FPS · ${metrics.frameLatencyMs.toFixed(1)} ms`}</span>
@@ -140,9 +226,16 @@ export default function App() {
       {activeTool === "adjust" ? (
         <AdjustmentPanel recipe={recipe} histogram={histogram} disabled={!photo} onChange={setRecipe}
           onReset={resetCurrentPanel} />
-      ) : (
+      ) : activeTool === "crop" ? (
         <CropPanel recipe={recipe} imageAspect={photo ? photo.width / photo.height : 1} disabled={!photo}
           freeCropEnabled={recipe.geometry.straighten === 0} onChange={setRecipe} />
+      ) : (
+        <MaskPanel recipe={recipe} selectedLayerId={selectedLayerId} selectedMaskId={selectedMaskId} brush={brush} disabled={!photo}
+          imageAspect={photo ? photo.width / photo.height : 1} sampleSource={sampleSource}
+          onCreate={createPhotoMask} onAdd={addSelection} onSelectLayer={(id) => { setSelectedLayerId(id); setSelectedMaskId(null); }}
+          onSelectMask={(layerId, maskId) => { setSelectedLayerId(layerId); setSelectedMaskId(maskId); }}
+          onUpdateLayer={changeLayer} onUpdateMask={changeMask} onSetMaskVisibility={changeMaskVisibility}
+          onDeleteLayer={deletePhotoLayer} onDeleteMask={deleteMask} onBrushChange={setBrush} />
       )}
     </main>
   );

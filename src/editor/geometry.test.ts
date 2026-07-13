@@ -7,6 +7,7 @@ import {
   cropFromDisplay,
   cropToDisplay,
   mapOutputToSource,
+  mapSourceToOutput,
 } from "./geometry";
 
 describe("crop and geometry", () => {
@@ -58,5 +59,21 @@ describe("crop and geometry", () => {
     expect(mapOutputToSource({ x: 0.5, y: 0.5 }, geometry, 1200, 800)).toEqual({ x: 0.4, y: 0.45 });
     const top = mapOutputToSource({ x: 0.5, y: 0 }, { ...geometry, straighten: 0 }, 1200, 800);
     expect(top.y).toBeCloseTo(0.2, 8);
+  });
+
+  it("round-trips mask points through the edited preview geometry", () => {
+    const geometry = {
+      ...createDefaultGeometry(),
+      crop: { x: 0.1, y: 0.15, width: 0.7, height: 0.65 },
+      rotation: 90 as const,
+      straighten: 7,
+      flipHorizontal: true,
+    };
+    const output = { x: 0.38, y: 0.61 };
+    const source = mapOutputToSource(output, geometry, 1200, 800);
+    expect(mapSourceToOutput(source, geometry, 1200, 800)).toEqual({
+      x: expect.closeTo(output.x, 8),
+      y: expect.closeTo(output.y, 8),
+    });
   });
 });

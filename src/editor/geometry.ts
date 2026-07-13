@@ -140,6 +140,36 @@ export function mapOutputToSource(
   };
 }
 
+export function mapSourceToOutput(
+  source: NormalizedPoint,
+  geometry: GeometrySettings,
+  imageWidth: number,
+  imageHeight: number,
+): NormalizedPoint {
+  const crop = geometry.crop;
+  let x = (source.x - crop.x) / crop.width - 0.5;
+  let y = 0.5 - (source.y - crop.y) / crop.height;
+  const cropAspect = imageWidth * crop.width / (imageHeight * crop.height);
+  const angle = -geometry.straighten * Math.PI / 180;
+  const sine = Math.sin(angle);
+  const cosine = Math.cos(angle);
+  const safeZoom = Math.max(
+    Math.abs(cosine) + Math.abs(sine) / cropAspect,
+    Math.abs(sine) * cropAspect + Math.abs(cosine),
+  );
+  x *= safeZoom;
+  y *= safeZoom;
+  let physicalX = x * cropAspect;
+  let physicalY = y;
+  [physicalX, physicalY] = rotatePoint(physicalX, physicalY, -angle);
+  x = physicalX / cropAspect;
+  y = physicalY;
+  [x, y] = rotatePoint(x, y, geometry.rotation * Math.PI / 180);
+  if (geometry.flipVertical) y = -y;
+  if (geometry.flipHorizontal) x = -x;
+  return { x: x + 0.5, y: 0.5 - y };
+}
+
 function rotateCrop(crop: CropRect, rotation: QuarterRotation): CropRect {
   if (rotation === 90) return {
     x: rounded(1 - crop.y - crop.height), y: crop.x, width: crop.height, height: crop.width,

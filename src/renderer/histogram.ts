@@ -2,6 +2,8 @@ import type { DevelopRecipe } from "../editor/develop-recipe";
 import { mapOutputToSource } from "../editor/geometry";
 import { developLinearPixel } from "./color-engine";
 import { adjustDetailPixel } from "./detail-engine";
+import { applyLayersToPixel } from "./mask-engine";
+import { MASK_TEXTURE_SIZE, rasterizeLayerMask } from "./mask-rasterizer";
 
 export interface HistogramData {
   red: number[];
@@ -31,6 +33,16 @@ export function calculateHistogram(
   const outputHeight = quarterTurn ? sourceCropWidth : sourceCropHeight;
   const outputPixels = outputWidth * outputHeight;
   const step = Math.max(1, Math.ceil(outputPixels / MAX_SAMPLES));
+  const imageAspect = width / height;
+  const layerMasks = recipe.layers.map((layer) => layer.visible
+    ? rasterizeLayerMask(layer, MASK_TEXTURE_SIZE, imageAspect, (point) => readPixel(
+      pixels,
+      width,
+      height,
+      Math.floor(point.x * width),
+      Math.floor(point.y * height),
+    ))
+    : null);
 
   for (let index = 0; index < outputPixels; index += step) {
     const outputX = index % outputWidth;
@@ -54,7 +66,22 @@ export function calculateHistogram(
       recipe.basic.texture,
       recipe.basic.clarity,
     );
-    const edited = developLinearPixel(detailed, recipe);
+    const global = developLinearPixel(detailed, recipe);
+    const fineLuma = luminance(fine);
+    const coarseLuma = luminance(coarse);
+    const centreLuma = luminance(centre);
+    const edited = applyLayersToPixel(global, recipe.layers, {
+      point: source,
+      sourceColor: centre,
+      fineDetail: centreLuma - fineLuma,
+      coarseDetail: centreLuma - coarseLuma,
+      imageAspect,
+      layerCoverages: recipe.layers.map((layer, layerIndex) => {
+        const mask = layerMasks[layerIndex];
+        if (!layer.visible || !mask) return 0;
+        return sampleMask(mask, source) * Math.min(1, Math.max(0, layer.opacity));
+      }),
+    });
     const red = linearToSrgb(edited[0]);
     const green = linearToSrgb(edited[1]);
     const blue = linearToSrgb(edited[2]);
@@ -115,6 +142,16 @@ function emptyBins(): number[] {
 function linearToSrgb(value: number): number {
   const safe = Math.max(0, value);
   return safe <= 0.0031308 ? safe * 12.92 : 1.055 * safe ** (1 / 2.4) - 0.055;
+}
+
+function luminance(color: readonly [number, number, number]): number {
+  return color[0] * 0.2126 + color[1] * 0.7152 + color[2] * 0.0722;
+}
+
+function sampleMask(mask: Uint8Array, point: { x: number; y: number }): number {
+  const x = Math.min(MASK_TEXTURE_SIZE - 1, Math.max(0, Math.floor(point.x * MASK_TEXTURE_SIZE)));
+  const y = Math.min(MASK_TEXTURE_SIZE - 1, Math.max(0, Math.floor(point.y * MASK_TEXTURE_SIZE)));
+  return mask[(MASK_TEXTURE_SIZE - 1 - y) * MASK_TEXTURE_SIZE + x] / 255;
 }
 
 function toBin(value: number): number {
