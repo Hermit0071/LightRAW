@@ -168,3 +168,7 @@ LIGHTRAW_REAL_IMAGE=/path/to/photo.ARW \
 ## 当前边界
 
 LightRAW 目前不包含镜头配置文件自动校正、HDR/全景合并、AI 主体选择、AI 降噪、完整 ICC 工作流、视频编辑、云同步和插件系统。项目仍处于早期版本，建议处理重要照片前保留原始文件和独立备份。
+
+## 许可证
+
+LightRAW 使用 [MIT License](LICENSE) 开源。你可以使用、修改和分发本项目，但需要保留原始版权和许可声明。
