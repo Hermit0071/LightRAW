@@ -6,7 +6,7 @@ import { createDefaultToneCurves, type ToneCurves } from "./tone-curve";
 import type { AdjustmentLayer } from "./masks";
 
 export interface DevelopRecipe {
-  version: 3;
+  version: 4;
   basic: BasicAdjustments;
   hsl: HslAdjustments;
   curves: ToneCurves;
@@ -17,7 +17,7 @@ export interface DevelopRecipe {
 
 export function createDefaultDevelopRecipe(): DevelopRecipe {
   return {
-    version: 3,
+    version: 4,
     basic: createDefaultAdjustments(),
     hsl: createDefaultHsl(),
     curves: createDefaultToneCurves(),

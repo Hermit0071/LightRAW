@@ -7,7 +7,7 @@ export type CurveChannel = "master" | "red" | "green" | "blue";
 export type ToneCurves = Record<CurveChannel, CurvePoint[]>;
 
 const ENDPOINTS: CurvePoint[] = [{ x: 0, y: 0 }, { x: 1, y: 1 }];
-const MIN_POINT_GAP = 0.001;
+export const MIN_CURVE_POINT_GAP = 0.001;
 const REPLACE_DISTANCE = 0.012;
 export const MAX_CURVE_POINTS = 16;
 
@@ -22,7 +22,7 @@ export function createDefaultToneCurves(): ToneCurves {
 
 export function addCurvePoint(curve: CurvePoint[], point: CurvePoint): CurvePoint[] {
   const next = curve.map((value) => ({ ...value }));
-  const safe = { x: clamp(point.x, MIN_POINT_GAP, 1 - MIN_POINT_GAP), y: clamp01(point.y) };
+  const safe = { x: clamp(point.x, MIN_CURVE_POINT_GAP, 1 - MIN_CURVE_POINT_GAP), y: clamp01(point.y) };
   const nearby = next.findIndex((value, index) => (
     index > 0 && index < next.length - 1 && Math.abs(value.x - safe.x) <= REPLACE_DISTANCE
   ));
@@ -48,7 +48,7 @@ export function moveCurvePoint(
     return next;
   }
   next[index] = {
-    x: clamp(point.x, next[index - 1].x + MIN_POINT_GAP, next[index + 1].x - MIN_POINT_GAP),
+    x: clamp(point.x, next[index - 1].x + MIN_CURVE_POINT_GAP, next[index + 1].x - MIN_CURVE_POINT_GAP),
     y: clamp01(point.y),
   };
   return next;

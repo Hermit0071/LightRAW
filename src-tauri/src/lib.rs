@@ -89,6 +89,16 @@ fn supported_extensions() -> Vec<&'static str> {
     decode::supported_extensions()
 }
 
+#[tauri::command]
+fn read_text_file(path: String) -> Result<String, String> {
+    std::fs::read_to_string(path).map_err(|error| format!("could not read file: {error}"))
+}
+
+#[tauri::command]
+fn write_text_file(path: String, contents: String) -> Result<(), String> {
+    std::fs::write(path, contents).map_err(|error| format!("could not write file: {error}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -97,7 +107,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             open_image,
             preview_pixels,
-            supported_extensions
+            supported_extensions,
+            read_text_file,
+            write_text_file
         ])
         .run(tauri::generate_context!())
         .expect("failed to run LightRAW");

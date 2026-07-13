@@ -53,11 +53,14 @@ export interface LayerMask {
   components: MaskComponent[];
 }
 
+export type LayerBlendMode = "normal" | "multiply" | "screen";
+
 export interface AdjustmentLayer {
   id: string;
   name: string;
   visible: boolean;
   opacity: number;
+  blendMode: LayerBlendMode;
   adjustments: BasicAdjustments;
   hsl: HslAdjustments;
   curves: ToneCurves;
@@ -83,6 +86,7 @@ export function createAdjustmentLayer(id: string, mask?: MaskComponent): Adjustm
     name: mask?.name ?? "调整图层",
     visible: true,
     opacity: 1,
+    blendMode: "normal",
     adjustments: createDefaultAdjustments(),
     hsl: createDefaultHsl(),
     curves: createDefaultToneCurves(),
@@ -101,6 +105,20 @@ export function removeLayer(layers: AdjustmentLayer[], id: string): AdjustmentLa
 
 export function updateLayer(layers: AdjustmentLayer[], updated: AdjustmentLayer): AdjustmentLayer[] {
   return layers.map((layer) => layer.id === updated.id ? updated : layer);
+}
+
+export function moveLayer(layers: AdjustmentLayer[], id: string, direction: -1 | 1): AdjustmentLayer[] {
+  const from = layers.findIndex((layer) => layer.id === id);
+  const to = from + direction;
+  if (from < 0 || to < 0 || to >= layers.length) return layers;
+  const moved = [...layers];
+  [moved[from], moved[to]] = [moved[to], moved[from]];
+  return moved;
+}
+
+/** Recipe order is bottom-to-top; the final item is the visually highest layer. */
+export function layersForDisplay(layers: AdjustmentLayer[]): AdjustmentLayer[] {
+  return [...layers].reverse();
 }
 
 export function addMaskComponent(layer: AdjustmentLayer, mask: MaskComponent): AdjustmentLayer {

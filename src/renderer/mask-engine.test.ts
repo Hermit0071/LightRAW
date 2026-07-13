@@ -31,4 +31,20 @@ describe("masked adjustment layers", () => {
     layer.curves = { ...layer.curves, master: addCurvePoint(layer.curves.master, { x: 0.5, y: 0.25 }) };
     expect(applyLayersToPixel([0.5, 0.5, 0.5], [layer], { ...context, sourceColor: [0.5, 0.5, 0.5] })[0]).toBeCloseTo(0.25, 6);
   });
+
+  it("supports normal, multiply and screen blend modes", () => {
+    const layer = createAdjustmentLayer("layer", createMaskComponent("linear", "linear"));
+    layer.adjustments.exposure = 1;
+    expect(applyLayersToPixel([0.2, 0.2, 0.2], [{ ...layer, blendMode: "normal" }], context)[0]).toBeCloseTo(0.4, 6);
+    expect(applyLayersToPixel([0.2, 0.2, 0.2], [{ ...layer, blendMode: "multiply" }], context)[0]).toBeCloseTo(0.08, 6);
+    expect(applyLayersToPixel([0.2, 0.2, 0.2], [{ ...layer, blendMode: "screen" }], context)[0]).toBeCloseTo(0.52, 6);
+  });
+
+  it("composites recipe layers from bottom to top", () => {
+    const exposure = createAdjustmentLayer("exposure", createMaskComponent("linear", "exposure-mask"));
+    exposure.adjustments.exposure = 1;
+    const screen = { ...createAdjustmentLayer("screen", createMaskComponent("linear", "screen-mask")), blendMode: "screen" as const };
+    expect(applyLayersToPixel([0.2, 0.2, 0.2], [exposure, screen], context)[0]).toBeCloseTo(0.64, 6);
+    expect(applyLayersToPixel([0.2, 0.2, 0.2], [screen, exposure], context)[0]).toBeCloseTo(0.72, 6);
+  });
 });

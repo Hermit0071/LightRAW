@@ -6,7 +6,9 @@ import {
   createAdjustmentLayer,
   createMaskComponent,
   layerCoverageAt,
+  layersForDisplay,
   MAX_LAYERS,
+  moveLayer,
   removeMaskComponent,
   removeLayer,
   setMaskComponentVisibility,
@@ -16,10 +18,18 @@ describe("adjustment layers and masks", () => {
   it("stores color adjustments on the layer and selection tools below it", () => {
     const mask = createMaskComponent("linear", "mask-1");
     const layer = createAdjustmentLayer("layer-1", mask);
-    expect(layer).toMatchObject({ id: "layer-1", visible: true, mask: { components: [{ id: "mask-1", type: "linear" }] } });
+    expect(layer).toMatchObject({ id: "layer-1", visible: true, blendMode: "normal", mask: { components: [{ id: "mask-1", type: "linear" }] } });
     expect(layer.adjustments.exposure).toBe(0);
     expect(removeLayer(addLayer([], layer), layer.id)).toEqual([]);
     expect(createAdjustmentLayer("normalized", createMaskComponent("linear", "first", "subtract")).mask.components[0].mode).toBe("add");
+  });
+
+  it("reorders layers without mutating the input stack", () => {
+    const layers = ["one", "two", "three"].map((id) => createAdjustmentLayer(id));
+    expect(moveLayer(layers, "two", -1).map((layer) => layer.id)).toEqual(["two", "one", "three"]);
+    expect(moveLayer(layers, "two", 1).map((layer) => layer.id)).toEqual(["one", "three", "two"]);
+    expect(layers.map((layer) => layer.id)).toEqual(["one", "two", "three"]);
+    expect(layersForDisplay(layers).map((layer) => layer.id)).toEqual(["three", "two", "one"]);
   });
 
   it("combines child masks with add, subtract and intersect", () => {

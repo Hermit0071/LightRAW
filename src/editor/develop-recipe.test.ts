@@ -4,7 +4,7 @@ import { createDefaultDevelopRecipe } from "./develop-recipe";
 describe("develop recipe", () => {
   it("contains every phase-two edit as a neutral serializable instruction", () => {
     const recipe = createDefaultDevelopRecipe();
-    expect(recipe.version).toBe(3);
+    expect(recipe.version).toBe(4);
     expect(recipe.layers).toEqual([]);
     expect(recipe.basic.whites).toBe(0);
     expect(recipe.basic.texture).toBe(0);

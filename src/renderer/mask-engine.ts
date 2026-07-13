@@ -36,13 +36,20 @@ export function applyLayersToPixel(
       evaluateCurve(layer.curves.master, evaluateCurve(layer.curves.green, hsl[1])),
       evaluateCurve(layer.curves.master, evaluateCurve(layer.curves.blue, hsl[2])),
     ];
-    color = [
-      mix(color[0], adjusted[0], coverage),
-      mix(color[1], adjusted[1], coverage),
-      mix(color[2], adjusted[2], coverage),
-    ];
+    const blended = blend(color, adjusted, layer.blendMode);
+    color = [mix(color[0], blended[0], coverage), mix(color[1], blended[1], coverage), mix(color[2], blended[2], coverage)];
   }
   return color;
+}
+
+function blend(base: LinearRgb, layer: LinearRgb, mode: AdjustmentLayer["blendMode"]): LinearRgb {
+  if (mode === "multiply") return [base[0] * layer[0], base[1] * layer[1], base[2] * layer[2]];
+  if (mode === "screen") return [
+    1 - (1 - base[0]) * (1 - layer[0]),
+    1 - (1 - base[1]) * (1 - layer[1]),
+    1 - (1 - base[2]) * (1 - layer[2]),
+  ];
+  return layer;
 }
 
 function mix(left: number, right: number, amount: number): number {

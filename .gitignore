@@ -6,3 +6,5 @@ src-tauri/target/
 .DS_Store
 *.log
 *.tsbuildinfo
+.playwright-cli/
+output/

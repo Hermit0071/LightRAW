@@ -53,6 +53,14 @@ button { color: inherit; }
 .open-button svg { width: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; }
 .open-button:hover, .empty-open:hover { background: #d7ff45; transform: translateY(-1px); }
 .open-button:disabled { opacity: .55; cursor: wait; transform: none; }
+.top-actions { justify-self: end; display: flex; align-items: center; gap: 6px; }
+.history-button, .compare-button {
+  height: 30px; min-width: 30px; padding: 0 8px; border: 1px solid #34352f; border-radius: 6px;
+  background: #1d1e1a; color: #85877d; font-size: 12px; cursor: pointer;
+}
+.compare-button { min-width: 44px; font-size: 9px; }
+.history-button:hover, .compare-button:hover, .compare-button.active { border-color: #667034; color: #d7ff45; background: #25281d; }
+.history-button:disabled, .compare-button:disabled { opacity: .28; cursor: default; }
 
 .tool-rail {
   grid-row: 2; display: flex; flex-direction: column; align-items: center; padding: 16px 8px 12px;
@@ -223,6 +231,18 @@ input[type="range"]::-webkit-slider-thumb { width: 10px; height: 10px; margin-to
 .layer-name-field { display: grid; grid-template-columns: 42px 1fr; align-items: center; gap: 8px; margin-bottom: 14px; color: #777970; font-size: 9px; }
 .layer-name-field input { min-width: 0; height: 28px; padding: 0 8px; border: 1px solid #33342f; border-radius: 5px; outline: 0; background: #1d1e1a; color: #c4c5bb; font: inherit; }
 .layer-name-field input:focus { border-color: #687234; }
+.layer-stack-controls { display: grid; gap: 9px; margin-top: 16px; }
+.layer-stack-controls label { display: grid; grid-template-columns: 72px 1fr; align-items: center; gap: 8px; color: #777970; font-size: 9px; }
+.layer-stack-controls select, .preset-create input {
+  min-width: 0; height: 29px; padding: 0 8px; border: 1px solid #33342f; border-radius: 5px;
+  outline: 0; background: #1d1e1a; color: #c4c5bb; font-size: 9px;
+}
+.layer-stack-controls > div { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.layer-stack-controls button, .preset-create button, .preset-import button {
+  height: 29px; border: 1px solid #33342f; border-radius: 5px; background: #1d1e1a; color: #898b81; font-size: 9px; cursor: pointer;
+}
+.layer-stack-controls button:hover, .preset-create button:hover, .preset-import button:hover { border-color: #687234; color: #d7ff45; }
+.layer-stack-controls button:disabled, .preset-create button:disabled { opacity: .3; cursor: default; }
 .mask-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 16px; }
 .mask-actions button { height: 28px; padding: 0 10px; border: 1px solid #33342f; border-radius: 5px; background: #1d1e1a; color: #777970; font-size: 9px; cursor: pointer; }
 .mask-actions button.active { border-color: #687234; color: #d7ff45; background: #25281d; }
@@ -230,6 +250,19 @@ input[type="range"]::-webkit-slider-thumb { width: 10px; height: 10px; margin-to
 .mask-shape-controls { gap: 14px; }
 .chroma-sample { display: flex; align-items: center; gap: 8px; color: #777970; font-size: 9px; }
 .chroma-sample i { width: 18px; height: 18px; border: 1px solid #55574f; border-radius: 50%; }
+.preset-create { display: grid; grid-template-columns: 1fr 58px; gap: 6px; }
+.preset-note { margin: 10px 0 0; color: #55574f; font-size: 8px; line-height: 1.55; }
+.preset-list { display: grid; gap: 5px; }
+.preset-list > p { margin: 12px 0; color: #55574f; font-size: 9px; text-align: center; }
+.preset-row { display: grid; grid-template-columns: 1fr 30px 30px; border: 1px solid #30312c; border-radius: 6px; overflow: hidden; background: #1d1e1a; }
+.preset-row button { min-width: 0; height: 42px; border: 0; background: transparent; color: #777970; cursor: pointer; }
+.preset-row > button:first-child { display: grid; align-content: center; gap: 3px; padding: 0 10px; text-align: left; }
+.preset-row strong { overflow: hidden; color: #aaa99f; font-size: 9px; font-weight: 520; text-overflow: ellipsis; white-space: nowrap; }
+.preset-row small { color: #55574f; font-size: 7px; }
+.preset-row button:hover { color: #d7ff45; background: #25281d; }
+.preset-row button:disabled { opacity: .3; }
+.preset-import { padding: 18px; border-bottom: 1px solid #292a26; }
+.preset-import button { width: 100%; }
 .mask-overlay { position: absolute; z-index: 2; overflow: visible; touch-action: none; cursor: crosshair; }
 .mask-overlay line, .mask-overlay .radial-path, .mask-overlay .pen-path {
   fill: #d7ff4514; stroke: #d7ff45; stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none;

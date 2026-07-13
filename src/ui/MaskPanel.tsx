@@ -5,7 +5,9 @@ import { createDefaultHsl, HSL_CHANNELS, updateHslChannel, type HslParameter } f
 import {
   MAX_LAYERS,
   MAX_MASK_COMPONENTS,
+  layersForDisplay,
   type AdjustmentLayer,
+  type LayerBlendMode,
   type MaskCombineMode,
   type MaskComponent,
   type MaskType,
@@ -39,7 +41,7 @@ const MODE_LABELS: Record<MaskCombineMode, string> = { add: "添加", subtract: 
 
 export function MaskPanel({
   recipe, selectedLayerId, selectedMaskId, brush, disabled, imageAspect, sampleSource, onCreate, onAdd, onSelectLayer, onSelectMask,
-  onUpdateLayer, onUpdateMask, onSetMaskVisibility, onDeleteLayer, onDeleteMask, onBrushChange,
+  onUpdateLayer, onMoveLayer, onUpdateMask, onSetMaskVisibility, onDeleteLayer, onDeleteMask, onBrushChange,
 }: {
   recipe: DevelopRecipe;
   selectedLayerId: string | null;
@@ -53,6 +55,7 @@ export function MaskPanel({
   onSelectLayer: (id: string) => void;
   onSelectMask: (layerId: string, maskId: string) => void;
   onUpdateLayer: (layer: AdjustmentLayer) => void;
+  onMoveLayer: (id: string, direction: -1 | 1) => void;
   onUpdateMask: (layerId: string, mask: MaskComponent) => void;
   onSetMaskVisibility: (layerId: string, maskId: string, visible: boolean) => void;
   onDeleteLayer: (id: string) => void;
@@ -77,11 +80,11 @@ export function MaskPanel({
     </PanelSection>
 
     <PanelSection title="调整图层" badge="LAYERS">
-      <div className="mask-list layer-list">{recipe.layers.length === 0 && <p>选择一种蒙版，新建调整图层</p>}{recipe.layers.map((item, index) => <div key={item.id} className="layer-entry">
+      <div className="mask-list layer-list">{recipe.layers.length === 0 && <p>选择一种蒙版，新建调整图层</p>}{layersForDisplay(recipe.layers).map((item, index) => <div key={item.id} className="layer-entry">
         <div className={`mask-row layer-row ${selectedLayerId === item.id && !selectedMaskId ? "active" : ""}`}>
           <button type="button" className="mask-select" onClick={() => onSelectLayer(item.id)}>
             <LayerMaskThumbnail layer={item} imageAspect={imageAspect} sampleSource={sampleSource} />
-            <span className="layer-number">{index + 1}</span><strong>{item.name}</strong><small>{item.mask.components.length} 个组件</small>
+            <span className="layer-number">{recipe.layers.length - index}</span><strong>{item.name}</strong><small>{item.mask.components.length} 个组件</small>
           </button>
           <button type="button" className={item.visible ? "visible" : ""} aria-label={item.visible ? "隐藏图层" : "显示图层"}
             onClick={() => onUpdateLayer({ ...item, visible: !item.visible })}>{item.visible ? "●" : "○"}</button>
@@ -115,6 +118,12 @@ export function MaskPanel({
           onClick={() => onUpdateLayer({ ...layer, mask: { ...layer.mask, inverted: !layer.mask.inverted } })}>反相整个蒙版</button></div>
         <Slider label="不透明度" value={layer.opacity * 100} minimum={0} maximum={100} step={1} disabled={false}
           onChange={(value) => onUpdateLayer({ ...layer, opacity: value / 100 })} />
+        <div className="layer-stack-controls"><label><span>混合模式</span><select value={layer.blendMode}
+          onChange={(event) => onUpdateLayer({ ...layer, blendMode: event.target.value as LayerBlendMode })}>
+          <option value="normal">正常</option><option value="multiply">正片叠底</option><option value="screen">滤色</option>
+        </select></label><div><button type="button" disabled={recipe.layers.at(-1)?.id === layer.id}
+          onClick={() => onMoveLayer(layer.id, 1)}>上移</button><button type="button" disabled={recipe.layers[0]?.id === layer.id}
+          onClick={() => onMoveLayer(layer.id, -1)}>下移</button></div></div>
       </PanelSection>
     </>}
 

@@ -52,6 +52,7 @@ uniform float u_color_noise;
 uniform int u_mask_count;
 uniform int u_mask_overlay_layer;
 uniform float u_mask_opacity[${MAX_LAYERS}];
+uniform int u_mask_blend_mode[${MAX_LAYERS}];
 uniform vec4 u_mask_basic0[${MAX_LAYERS}];
 uniform vec4 u_mask_basic1[${MAX_LAYERS}];
 uniform vec4 u_mask_basic2[${MAX_LAYERS}];
@@ -252,6 +253,12 @@ vec3 apply_mask_curve(vec3 color, int index) {
   );
 }
 
+vec3 blend_layer(vec3 base, vec3 layer, int mode) {
+  if (mode == 1) return base * layer;
+  if (mode == 2) return 1.0 - (1.0 - base) * (1.0 - layer);
+  return layer;
+}
+
 void main() {
   vec2 source_uv = map_uv(v_uv);
   vec3 source_color = texture(u_image, source_uv).rgb;
@@ -273,7 +280,7 @@ void main() {
     if (coverage <= 0.0001) continue;
     vec3 adjusted = apply_mask_basic(color, index, fine_detail, coarse_detail);
     adjusted = apply_mask_curve(apply_mask_hsl(adjusted, index), index);
-    color = mix(color, adjusted, coverage);
+    color = mix(color, blend_layer(color, adjusted, u_mask_blend_mode[index]), coverage);
   }
   vec3 display_color = linear_to_srgb(color);
   if (u_mask_overlay_layer >= 0) {
@@ -531,6 +538,7 @@ export class PreviewRenderer {
     const gl = this.gl;
     const active = this.recipe.layers.filter((layer) => layer.visible).slice(0, MAX_LAYERS);
     const opacity = new Float32Array(MAX_LAYERS);
+    const blendMode = new Int32Array(MAX_LAYERS);
     const basic0 = new Float32Array(MAX_LAYERS * 4);
     const basic1 = new Float32Array(MAX_LAYERS * 4);
     const basic2 = new Float32Array(MAX_LAYERS * 4);
@@ -538,6 +546,7 @@ export class PreviewRenderer {
     const maskHsl = new Float32Array(MAX_LAYERS * 8 * 3);
     active.forEach((layer, index) => {
       opacity[index] = Math.min(1, Math.max(0, layer.opacity));
+      blendMode[index] = layer.blendMode === "multiply" ? 1 : layer.blendMode === "screen" ? 2 : 0;
       const value = toPreviewUniforms(layer.adjustments);
       basic0.set([value.temperature, value.tint, value.exposure, value.contrast], index * 4);
       basic1.set([value.highlights, value.shadows, value.whites, value.blacks], index * 4);
@@ -550,6 +559,7 @@ export class PreviewRenderer {
     });
     setUniform1i(gl, this.program, "u_mask_count", active.length);
     setUniform1fv(gl, this.program, "u_mask_opacity[0]", opacity);
+    setUniform1iv(gl, this.program, "u_mask_blend_mode[0]", blendMode);
     setUniform4fv(gl, this.program, "u_mask_basic0[0]", basic0);
     setUniform4fv(gl, this.program, "u_mask_basic1[0]", basic1);
     setUniform4fv(gl, this.program, "u_mask_basic2[0]", basic2);
@@ -670,6 +680,9 @@ function setUniform3fv(gl: WebGL2RenderingContext, program: WebGLProgram, name: 
 }
 function setUniform1fv(gl: WebGL2RenderingContext, program: WebGLProgram, name: string, values: Float32Array): void {
   gl.uniform1fv(uniform(gl, program, name), values);
+}
+function setUniform1iv(gl: WebGL2RenderingContext, program: WebGLProgram, name: string, values: Int32Array): void {
+  gl.uniform1iv(uniform(gl, program, name), values);
 }
 function setUniform4fv(gl: WebGL2RenderingContext, program: WebGLProgram, name: string, values: Float32Array): void {
   gl.uniform4fv(uniform(gl, program, name), values);
