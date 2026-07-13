@@ -20,6 +20,20 @@ describe("phase-one color engine", () => {
     expect(result[2]).toBeLessThan(0.4);
   });
 
+  it("moves positive tint away from green without changing brightness controls", () => {
+    const result = adjustLinearPixel([0.4, 0.4, 0.4], { ...neutral, tint: 50 });
+    expect(result[0]).toBeGreaterThan(0.4);
+    expect(result[1]).toBeLessThan(0.4);
+    expect(result[2]).toBeGreaterThan(0.4);
+  });
+
+  it("expands values around middle grey when contrast increases", () => {
+    const dark = adjustLinearPixel([0.1, 0.1, 0.1], { ...neutral, contrast: 50 });
+    const bright = adjustLinearPixel([0.8, 0.8, 0.8], { ...neutral, contrast: 50 });
+    expect(dark[0]).toBeLessThan(0.1);
+    expect(bright[0]).toBeGreaterThan(0.8);
+  });
+
   it("targets shadows more strongly on dark pixels", () => {
     const dark = adjustLinearPixel([0.1, 0.1, 0.1], { ...neutral, shadows: 50 });
     const bright = adjustLinearPixel([0.8, 0.8, 0.8], { ...neutral, shadows: 50 });

@@ -156,7 +156,7 @@ export default function App() {
             {photo.camera && <span>{photo.camera}</span>}
             <span className="live">
               <i />实时预览
-              {metrics && ` · ${metrics.fps || "—"} FPS · ${metrics.inputLatencyMs.toFixed(1)} ms`}
+              {metrics && ` · ${metrics.fps || "—"} FPS · ${metrics.frameLatencyMs.toFixed(1)} ms`}
             </span>
           </div>
         )}

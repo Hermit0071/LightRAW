@@ -76,7 +76,7 @@ void main() {
 
 export interface PreviewMetrics {
   fps: number;
-  inputLatencyMs: number;
+  frameLatencyMs: number;
 }
 
 export class PreviewRenderer {
@@ -251,9 +251,16 @@ export class PreviewRenderer {
     const averageInterval = this.frameIntervals.length
       ? this.frameIntervals.reduce((sum, value) => sum + value, 0) / this.frameIntervals.length
       : 0;
-    this.onMetrics?.({
-      fps: averageInterval > 0 ? Math.round(1000 / averageInterval) : 0,
-      inputLatencyMs: now - (this.scheduledAt || frameStartedAt),
+    const requestedAt = this.scheduledAt || frameStartedAt;
+    const fps = averageInterval > 0 ? Math.round(1000 / averageInterval) : 0;
+    // The next animation callback occurs after the browser had an opportunity
+    // to composite this frame, making it a closer bound on visible feedback
+    // than CPU submission time alone.
+    requestAnimationFrame(() => {
+      this.onMetrics?.({
+        fps,
+        frameLatencyMs: performance.now() - requestedAt,
+      });
     });
   }
 }
