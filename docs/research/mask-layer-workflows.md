@@ -157,7 +157,7 @@ output   = mix(input, adjusted, finalMaskCoverage * layer.opacity)
 5. **色度范围的角色错误。** `ChromaMask` 直接携带调整，天然变成整图颜色选择效果；真实高频工作流是把颜色范围作为已有空间蒙版的相交/细化条件。
 6. **缺少图层级强度。** Capture One 式的 layer opacity 应整体淡化该层所有调整；它不属于某种具体 mask shape。
 7. **渲染合成单位错误。** 当前引擎逐个 `PhotoMask` 应用其调整，本质上把每个选区组件当成一层；正确做法是先合成一层的最终覆盖，再只应用一次该层的调整。
-8. **阶段四会产生重复架构。** 如果保留 `PhotoMask[]`，阶段四再增加调整图层，将出现“蒙版自带调整”和“调整图层再带蒙版”两套相互竞争的模型。阶段三现在就建立 `LocalAdjustmentLayer[]`，阶段四只需扩展 opacity / blend mode / reorder / history。
+8. **阶段四会产生重复架构。** 如果保留 `PhotoMask[]`，阶段四再增加调整图层，将出现“蒙版自带调整”和“调整图层再带蒙版”两套相互竞争的模型。阶段三现在就建立 `LocalAdjustmentLayer[]` 和 opacity，阶段四只需扩展 blend mode / reorder / history。
 
 当前模型并非所有部分都应丢弃：五种具体 shape 的几何数据、覆盖率算法、GPU mask atlas、画布控制柄都可复用。需要重构的是**所有权和合成层级**，而不是重写每种选区算法。
 
