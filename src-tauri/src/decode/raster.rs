@@ -4,6 +4,12 @@ use half::f16;
 use image::{DynamicImage, GenericImageView, ImageReader};
 use std::path::Path;
 
+#[derive(Clone, Copy)]
+pub(super) enum SourceTransfer {
+    Linear,
+    Srgb,
+}
+
 pub fn decode(path: &Path, max_dimension: u32) -> Result<DecodedPreview, DecodeError> {
     let source = if is_jpeg(path) {
         let bytes = std::fs::read(path)?;
@@ -15,7 +21,7 @@ pub fn decode(path: &Path, max_dimension: u32) -> Result<DecodedPreview, DecodeE
     };
     let preview = resize_to_fit(source, max_dimension.max(1))?;
     let (width, height) = preview.dimensions();
-    let rgba_f16_le = linear_half_float_bytes(preview);
+    let rgba_f16_le = half_float_bytes(preview, SourceTransfer::Srgb);
 
     Ok(DecodedPreview {
         width,
@@ -73,15 +79,14 @@ fn empty_image_like(source: &DynamicImage, width: u32, height: u32) -> DynamicIm
     }
 }
 
-pub(super) fn linear_half_float_bytes(image: DynamicImage) -> Vec<u8> {
+pub(super) fn half_float_bytes(image: DynamicImage, source_transfer: SourceTransfer) -> Vec<u8> {
     let rgba = image.to_rgba32f();
     let mut output = Vec::with_capacity(rgba.len() * 2);
 
     for (index, value) in rgba.into_raw().into_iter().enumerate() {
-        let linear = if index % 4 == 3 {
-            value
-        } else {
-            srgb_to_linear(value)
+        let linear = match (index % 4, source_transfer) {
+            (3, _) | (_, SourceTransfer::Linear) => value,
+            (_, SourceTransfer::Srgb) => srgb_to_linear(value),
         };
         output.extend_from_slice(&f16::from_f32(linear.clamp(0.0, 1.0)).to_le_bytes());
     }
@@ -107,5 +112,22 @@ fn display_format(path: &Path) -> String {
         "jpg" | "jpeg" => "JPEG".to_string(),
         "tif" | "tiff" => "TIFF".to_string(),
         extension => extension.to_ascii_uppercase(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{half_float_bytes, SourceTransfer};
+    use half::f16;
+    use image::{DynamicImage, Rgb, Rgb32FImage};
+
+    #[test]
+    fn preserves_linear_raw_samples_without_applying_srgb_transfer_again() {
+        let image = DynamicImage::ImageRgb32F(Rgb32FImage::from_pixel(1, 1, Rgb([0.5, 0.5, 0.5])));
+
+        let bytes = half_float_bytes(image, SourceTransfer::Linear);
+        let red = f16::from_le_bytes([bytes[0], bytes[1]]).to_f32();
+
+        assert!((red - 0.5).abs() < 0.001);
     }
 }

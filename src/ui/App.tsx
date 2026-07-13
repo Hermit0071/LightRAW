@@ -3,29 +3,29 @@ import { chooseAndOpenImage, type PreviewInfo } from "../bridge/images";
 import {
   createDefaultAdjustments,
   updateAdjustment,
+  BASIC_ADJUSTMENT_LIMITS,
   type BasicAdjustmentName,
   type BasicAdjustments,
 } from "../editor/basic-adjustments";
 import { PreviewRenderer } from "../renderer/preview-renderer";
+import type { PreviewMetrics } from "../renderer/preview-renderer";
 
 interface SliderDefinition {
   name: BasicAdjustmentName;
   label: string;
-  min: number;
-  max: number;
   step: number;
 }
 
 const WHITE_BALANCE: SliderDefinition[] = [
-  { name: "temperature", label: "色温", min: -100, max: 100, step: 1 },
-  { name: "tint", label: "色调", min: -100, max: 100, step: 1 },
+  { name: "temperature", label: "色温", step: 1 },
+  { name: "tint", label: "色调", step: 1 },
 ];
 
 const TONE: SliderDefinition[] = [
-  { name: "exposure", label: "曝光", min: -5, max: 5, step: 0.05 },
-  { name: "contrast", label: "对比度", min: -100, max: 100, step: 1 },
-  { name: "highlights", label: "高光", min: -100, max: 100, step: 1 },
-  { name: "shadows", label: "阴影", min: -100, max: 100, step: 1 },
+  { name: "exposure", label: "曝光", step: 0.05 },
+  { name: "contrast", label: "对比度", step: 1 },
+  { name: "highlights", label: "高光", step: 1 },
+  { name: "shadows", label: "阴影", step: 1 },
 ];
 
 export default function App() {
@@ -35,13 +35,14 @@ export default function App() {
   const [photo, setPhoto] = useState<PreviewInfo | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [message, setMessage] = useState("");
+  const [metrics, setMetrics] = useState<PreviewMetrics | null>(null);
 
   useEffect(() => {
     if (!canvasRef.current) {
       return;
     }
     try {
-      rendererRef.current = new PreviewRenderer(canvasRef.current, adjustments);
+      rendererRef.current = new PreviewRenderer(canvasRef.current, adjustments, setMetrics);
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : String(error));
@@ -153,7 +154,10 @@ export default function App() {
           <div className="preview-status">
             <span>{photo.format}</span>
             {photo.camera && <span>{photo.camera}</span>}
-            <span className="live"><i />实时预览</span>
+            <span className="live">
+              <i />实时预览
+              {metrics && ` · ${metrics.fps || "—"} FPS · ${metrics.inputLatencyMs.toFixed(1)} ms`}
+            </span>
           </div>
         )}
       </section>
@@ -227,8 +231,9 @@ function AdjustmentSlider({
   const display = definition.name === "exposure"
     ? `${value > 0 ? "+" : ""}${value.toFixed(2)}`
     : `${value > 0 ? "+" : ""}${Math.round(value)}`;
-  const fill = ((value - definition.min) / (definition.max - definition.min)) * 100;
-  const center = ((0 - definition.min) / (definition.max - definition.min)) * 100;
+  const [minimum, maximum] = BASIC_ADJUSTMENT_LIMITS[definition.name];
+  const fill = ((value - minimum) / (maximum - minimum)) * 100;
+  const center = ((0 - minimum) / (maximum - minimum)) * 100;
 
   return (
     <label className={`adjustment ${disabled ? "is-disabled" : ""}`}>
@@ -237,8 +242,8 @@ function AdjustmentSlider({
       <span className="range-wrap" style={{ "--fill": `${fill}%`, "--center": `${center}%` } as React.CSSProperties}>
         <input
           type="range"
-          min={definition.min}
-          max={definition.max}
+          min={minimum}
+          max={maximum}
           step={definition.step}
           value={value}
           disabled={disabled}

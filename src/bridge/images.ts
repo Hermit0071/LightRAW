@@ -15,30 +15,12 @@ export interface OpenedPreview {
   pixels: Uint8Array;
 }
 
-const SUPPORTED_EXTENSIONS = [
-  "jpg",
-  "jpeg",
-  "png",
-  "tif",
-  "tiff",
-  "heif",
-  "heic",
-  "cr2",
-  "cr3",
-  "nef",
-  "nrw",
-  "arw",
-  "raf",
-  "rw2",
-  "orf",
-  "dng",
-];
-
 export async function chooseAndOpenImage(): Promise<OpenedPreview | null> {
+  const extensions = await invoke<string[]>("supported_extensions");
   const selected = await open({
     multiple: false,
     directory: false,
-    filters: [{ name: "照片与 RAW", extensions: SUPPORTED_EXTENSIONS }],
+    filters: [{ name: "照片与 RAW", extensions }],
   });
   if (!selected || Array.isArray(selected)) {
     return null;

@@ -25,17 +25,22 @@ UI 不访问 LibRaw、libheif 或像素实现；滑块拖动只更新 WebGL unif
 ## 已验证
 
 - TypeScript 类型检查通过。
-- Editor Domain 和 Preview Renderer 单元测试通过。
+- Editor Domain、调色算法和 Preview Renderer 单元测试通过。
 - Rust 格式路由和 PNG 解码测试通过。
 - 8064×4536 JPEG 在 macOS Debug 构建中生成 4096 长边预览约 7.6 秒；优化前为 39.1 秒。
-- 真实 Sony ARW 通过 LibRaw 完整解码和去马赛克测试，未使用内嵌 JPEG 缩略图。
+- 真实 Sony ARW 通过 LibRaw 完整解码和去马赛克测试，未使用内嵌 JPEG 缩略图；线性样本不会重复执行 sRGB 逆传递。
 - 临时 HEIC 样片通过 libheif Adapter 解码测试。
-- macOS `.app` 可启动、显示 4096×2304 JPEG，并能实时响应曝光滑块。
+- macOS `.app` 可启动并显示 2880×1920 交互预览；连续拖动曝光滑块实测约 45 FPS、18 ms 输入到提交延迟。
 
 ## 尚未验证或已知限制
 
 - 当前环境没有 Windows 主机，Windows 仅提供构建配置；需要在 Windows 或 CI 上完成实际运行验证。
+- 性能数据来自当前 Mac，尚未在 M1 MacBook Air 和中端 Windows 笔记本上复测。
 - 尚未收集 Canon、Nikon、Fujifilm、Panasonic 和 OM System 的真实 RAW 样片矩阵。
 - 不做完整 ICC 色彩管理；普通图片按 sRGB 解释，RAW 转为线性 sRGB 预览。
 - 阶段一只保存内存中的编辑状态，退出后不会保留。
 - 正式安装包的原生动态库归档、签名和公证推迟到阶段五。
+
+## 后续已确认要求
+
+阶段四随历史记录实现日常快捷键：macOS `⌘Z`/`⇧⌘Z`，Windows `Ctrl+Z`/`Ctrl+Y`/`Ctrl+Shift+Z`。同时补充打开照片、重置调整和前后对比快捷键；文本输入获得焦点时不得抢占系统编辑快捷键。

@@ -10,7 +10,10 @@ export interface BasicAdjustments {
 
 export type BasicAdjustmentName = Exclude<keyof BasicAdjustments, "version">;
 
-const LIMITS: Record<BasicAdjustmentName, readonly [number, number]> = {
+export const BASIC_ADJUSTMENT_LIMITS: Record<
+  BasicAdjustmentName,
+  readonly [number, number]
+> = {
   temperature: [-100, 100],
   tint: [-100, 100],
   exposure: [-5, 5],
@@ -40,7 +43,7 @@ export function updateAdjustment(
     throw new RangeError(`${name} must be finite`);
   }
 
-  const [minimum, maximum] = LIMITS[name];
+  const [minimum, maximum] = BASIC_ADJUSTMENT_LIMITS[name];
   return {
     ...current,
     [name]: Math.min(maximum, Math.max(minimum, value)),

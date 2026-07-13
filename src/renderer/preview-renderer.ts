@@ -1,4 +1,5 @@
 import type { BasicAdjustments } from "../editor/basic-adjustments";
+import { COLOR_ENGINE_CONSTANTS } from "./color-engine";
 import { toPreviewUniforms } from "./uniforms";
 
 const VERTEX_SHADER = `#version 300 es
@@ -37,25 +38,25 @@ vec3 apply_white_balance(vec3 color) {
   // Temperature shifts red against blue; tint shifts green against magenta.
   // Exponential gains remain positive and preserve neutral zero values.
   vec3 gains = exp2(vec3(
-    u_temperature * 0.45 + u_tint * 0.12,
-    -u_tint * 0.28,
-    -u_temperature * 0.45 + u_tint * 0.12
+    u_temperature * ${COLOR_ENGINE_CONSTANTS.temperatureGain} + u_tint * ${COLOR_ENGINE_CONSTANTS.tintRedBlueGain},
+    -u_tint * ${COLOR_ENGINE_CONSTANTS.tintGreenGain},
+    -u_temperature * ${COLOR_ENGINE_CONSTANTS.temperatureGain} + u_tint * ${COLOR_ENGINE_CONSTANTS.tintRedBlueGain}
   ));
   return color * gains;
 }
 
 float adjust_zone(float value, float amount, float mask) {
   if (amount >= 0.0) {
-    return value + (1.0 - value) * amount * mask * 0.72;
+    return value + (1.0 - value) * amount * mask * ${COLOR_ENGINE_CONSTANTS.zoneStrength};
   }
-  return value + value * amount * mask * 0.72;
+  return value + value * amount * mask * ${COLOR_ENGINE_CONSTANTS.zoneStrength};
 }
 
 vec3 apply_tone(vec3 color) {
   float before = max(luminance(color), 0.00001);
   float value = before;
-  float shadow_mask = 1.0 - smoothstep(0.06, 0.58, value);
-  float highlight_mask = smoothstep(0.28, 0.95, value);
+  float shadow_mask = 1.0 - smoothstep(${COLOR_ENGINE_CONSTANTS.shadowStart}, ${COLOR_ENGINE_CONSTANTS.shadowEnd}, value);
+  float highlight_mask = smoothstep(${COLOR_ENGINE_CONSTANTS.highlightStart}, ${COLOR_ENGINE_CONSTANTS.highlightEnd}, value);
   value = adjust_zone(value, u_shadows, shadow_mask);
   value = adjust_zone(value, u_highlights, highlight_mask);
   return color * max(value, 0.0) / before;
@@ -69,9 +70,14 @@ void main() {
 
   // Contrast pivots around photographic middle grey in linear light.
   float slope = exp2(u_contrast);
-  color = max((color - 0.18) * slope + 0.18, vec3(0.0));
+  color = max((color - ${COLOR_ENGINE_CONSTANTS.middleGray}) * slope + ${COLOR_ENGINE_CONSTANTS.middleGray}, vec3(0.0));
   out_color = vec4(linear_to_srgb(color), source.a);
 }`;
+
+export interface PreviewMetrics {
+  fps: number;
+  inputLatencyMs: number;
+}
 
 export class PreviewRenderer {
   private readonly gl: WebGL2RenderingContext;
@@ -82,8 +88,15 @@ export class PreviewRenderer {
   private imageWidth = 0;
   private imageHeight = 0;
   private frameRequest = 0;
+  private scheduledAt = 0;
+  private lastFrameAt = 0;
+  private readonly frameIntervals: number[] = [];
 
-  constructor(canvas: HTMLCanvasElement, initial: BasicAdjustments) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    initial: BasicAdjustments,
+    private readonly onMetrics?: (metrics: PreviewMetrics) => void,
+  ) {
     const gl = canvas.getContext("webgl2", {
       alpha: false,
       antialias: false,
@@ -93,6 +106,9 @@ export class PreviewRenderer {
     });
     if (!gl) {
       throw new Error("当前设备不支持 WebGL 2，无法启动 GPU 预览。");
+    }
+    if (!gl.getExtension("EXT_color_buffer_float")) {
+      throw new Error("当前 GPU 不支持半浮点渲染缓冲区。");
     }
     this.gl = gl;
     this.program = createProgram(gl, VERTEX_SHADER, FRAGMENT_SHADER);
@@ -110,6 +126,7 @@ export class PreviewRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+    verifyHalfFloatTexture(gl, texture);
 
     this.resizeObserver = new ResizeObserver(() => this.scheduleRender());
     this.resizeObserver.observe(canvas);
@@ -158,6 +175,7 @@ export class PreviewRenderer {
     if (this.frameRequest !== 0) {
       return;
     }
+    this.scheduledAt = performance.now();
     this.frameRequest = requestAnimationFrame(() => {
       this.frameRequest = 0;
       this.render();
@@ -165,6 +183,7 @@ export class PreviewRenderer {
   }
 
   private render(): void {
+    const frameStartedAt = performance.now();
     const gl = this.gl;
     const canvas = gl.canvas as HTMLCanvasElement;
     const ratio = Math.min(window.devicePixelRatio || 1, 2);
@@ -179,6 +198,7 @@ export class PreviewRenderer {
     gl.clearColor(0.055, 0.056, 0.052, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
     if (this.imageWidth === 0 || this.imageHeight === 0) {
+      this.reportMetrics(frameStartedAt);
       return;
     }
 
@@ -210,6 +230,52 @@ export class PreviewRenderer {
     setUniform(gl, this.program, "u_highlights", uniforms.highlights);
     setUniform(gl, this.program, "u_shadows", uniforms.shadows);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.flush();
+    this.reportMetrics(frameStartedAt);
+  }
+
+  private reportMetrics(frameStartedAt: number): void {
+    const now = performance.now();
+    if (this.lastFrameAt > 0) {
+      const interval = now - this.lastFrameAt;
+      if (interval < 250) {
+        this.frameIntervals.push(interval);
+        if (this.frameIntervals.length > 30) {
+          this.frameIntervals.shift();
+        }
+      } else {
+        this.frameIntervals.length = 0;
+      }
+    }
+    this.lastFrameAt = now;
+    const averageInterval = this.frameIntervals.length
+      ? this.frameIntervals.reduce((sum, value) => sum + value, 0) / this.frameIntervals.length
+      : 0;
+    this.onMetrics?.({
+      fps: averageInterval > 0 ? Math.round(1000 / averageInterval) : 0,
+      inputLatencyMs: now - (this.scheduledAt || frameStartedAt),
+    });
+  }
+}
+
+function verifyHalfFloatTexture(gl: WebGL2RenderingContext, texture: WebGLTexture): void {
+  for (let attempt = 0; attempt < 8 && gl.getError() !== gl.NO_ERROR; attempt += 1) {
+    // Clear a bounded number of errors left by WebView initialization.
+  }
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA16F,
+    1,
+    1,
+    0,
+    gl.RGBA,
+    gl.HALF_FLOAT,
+    new Uint16Array([0, 0, 0, 0x3c00]),
+  );
+  if (gl.getError() !== gl.NO_ERROR) {
+    throw new Error("当前 GPU 无法创建 RGBA16F 预览纹理。");
   }
 }
 

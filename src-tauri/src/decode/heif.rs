@@ -1,4 +1,4 @@
-use super::raster::{linear_half_float_bytes, resize_to_fit};
+use super::raster::{half_float_bytes, resize_to_fit, SourceTransfer};
 use super::{DecodeError, DecodedPreview};
 use image::{DynamicImage, RgbImage};
 use libheif_rs::{ColorSpace, HeifContext, LibHeif, RgbChroma};
@@ -42,6 +42,6 @@ pub fn decode(path: &Path, max_dimension: u32) -> Result<DecodedPreview, DecodeE
             .unwrap_or("HEIF")
             .to_ascii_uppercase(),
         camera: None,
-        rgba_f16_le: linear_half_float_bytes(preview),
+        rgba_f16_le: half_float_bytes(preview, SourceTransfer::Srgb),
     })
 }

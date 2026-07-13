@@ -38,16 +38,32 @@ pub enum ImageKind {
     Raw,
 }
 
+const RASTER_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "tif", "tiff"];
+const HEIF_EXTENSIONS: &[&str] = &["heif", "heic"];
+const RAW_EXTENSIONS: &[&str] = &[
+    "cr2", "cr3", "nef", "nrw", "arw", "raf", "rw2", "orf", "dng",
+];
+
+pub fn supported_extensions() -> Vec<&'static str> {
+    RASTER_EXTENSIONS
+        .iter()
+        .chain(HEIF_EXTENSIONS)
+        .chain(RAW_EXTENSIONS)
+        .copied()
+        .collect()
+}
+
 impl ImageKind {
     pub fn from_path(path: &Path) -> Option<Self> {
         let extension = path.extension()?.to_str()?.to_ascii_lowercase();
-        match extension.as_str() {
-            "jpg" | "jpeg" | "png" | "tif" | "tiff" => Some(Self::Raster),
-            "heif" | "heic" => Some(Self::Heif),
-            "cr2" | "cr3" | "nef" | "nrw" | "arw" | "raf" | "rw2" | "orf" | "dng" => {
-                Some(Self::Raw)
-            }
-            _ => None,
+        if RASTER_EXTENSIONS.contains(&extension.as_str()) {
+            Some(Self::Raster)
+        } else if HEIF_EXTENSIONS.contains(&extension.as_str()) {
+            Some(Self::Heif)
+        } else if RAW_EXTENSIONS.contains(&extension.as_str()) {
+            Some(Self::Raw)
+        } else {
+            None
         }
     }
 }
@@ -96,6 +112,8 @@ mod tests {
             let path = format!("photo.{extension}");
             assert_eq!(ImageKind::from_path(Path::new(&path)), Some(ImageKind::Raw));
         }
+
+        assert_eq!(super::supported_extensions().len(), 16);
     }
 
     #[test]
@@ -115,7 +133,10 @@ mod tests {
 
         assert_eq!((preview.width, preview.height), (2, 1));
         assert_eq!(preview.format, "PNG");
-        assert_eq!(preview.rgba_f16_le.len(), 2 * 1 * 4 * 2);
+        assert_eq!(
+            preview.rgba_f16_le.len(),
+            2 * 4 * std::mem::size_of::<u16>()
+        );
     }
 
     #[test]

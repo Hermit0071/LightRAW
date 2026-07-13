@@ -1,4 +1,4 @@
-use super::raster::{linear_half_float_bytes, resize_to_fit};
+use super::raster::{half_float_bytes, resize_to_fit, SourceTransfer};
 use super::{DecodeError, DecodedPreview};
 use image::DynamicImage;
 use std::ffi::{c_char, c_int, CStr, CString};
@@ -66,7 +66,9 @@ pub fn decode(path: &Path, max_dimension: u32) -> Result<DecodedPreview, DecodeE
             .unwrap_or("RAW")
             .to_ascii_uppercase(),
         camera: (!camera.is_empty()).then_some(camera),
-        rgba_f16_le: linear_half_float_bytes(preview),
+        // LibRaw was configured with gamma 1.0, so these samples already use a
+        // linear transfer and must not pass through sRGB decoding a second time.
+        rgba_f16_le: half_float_bytes(preview, SourceTransfer::Linear),
     })
 }
 

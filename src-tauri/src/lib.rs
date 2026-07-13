@@ -84,12 +84,21 @@ fn preview_pixels(id: u64, state: tauri::State<'_, PreviewState>) -> Result<Resp
     Ok(Response::new(image.pixels.clone()))
 }
 
+#[tauri::command]
+fn supported_extensions() -> Vec<&'static str> {
+    decode::supported_extensions()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(PreviewState::default())
-        .invoke_handler(tauri::generate_handler![open_image, preview_pixels])
+        .invoke_handler(tauri::generate_handler![
+            open_image,
+            preview_pixels,
+            supported_extensions
+        ])
         .run(tauri::generate_context!())
         .expect("failed to run LightRAW");
 }
