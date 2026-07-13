@@ -4,6 +4,11 @@ export const HSL_CHANNELS = [
 
 export type HslChannelName = (typeof HSL_CHANNELS)[number];
 export type HslParameter = "hue" | "saturation" | "luminance";
+export const HSL_PARAMETER_LIMITS: Record<HslParameter, readonly [number, number]> = {
+  hue: [-180, 180],
+  saturation: [-100, 200],
+  luminance: [-200, 200],
+};
 export interface HslChannel {
   hue: number;
   saturation: number;
@@ -40,14 +45,15 @@ export function updateHslChannel(
   }
   return {
     ...current,
-    [channel]: { ...current[channel], [parameter]: clamp(value, -100, 100) },
+    [channel]: { ...current[channel], [parameter]: clamp(value, ...HSL_PARAMETER_LIMITS[parameter]) },
   };
 }
 
 /**
  * HSL channel controls use overlapping triangular hue windows. Adjacent colour
  * families blend across their boundary, avoiding the hard banding produced by
- * eight independent hue ranges. Slider hue is capped at a 30 degree shift.
+ * eight independent hue ranges. A value of 100 corresponds to a 30 degree
+ * shift; the expanded public range permits up to 54 degrees in either direction.
  */
 export function adjustHslPixel(
   input: readonly [number, number, number],

@@ -7,6 +7,9 @@ describe("JSON develop presets", () => {
   it("round-trips global and layer adjustments but keeps photo-specific geometry", () => {
     const source = createDefaultDevelopRecipe();
     source.basic.exposure = 1.25;
+    source.basic.contrast = 137.25;
+    source.hsl.blue.hue = 137.25;
+    source.detail.sharpeningAmount = 137.25;
     source.layers = [createAdjustmentLayer("layer", createMaskComponent("linear", "mask"))];
     const preset = createPreset("Bright", source, "preset-1");
     const parsed = parsePresetJson(stringifyPreset(preset));
@@ -15,6 +18,9 @@ describe("JSON develop presets", () => {
     target.geometry.crop = { x: 0.1, y: 0.2, width: 0.6, height: 0.5 };
     const applied = applyPreset(target, parsed);
     expect(applied.basic.exposure).toBe(1.25);
+    expect(applied.basic.contrast).toBe(137.25);
+    expect(applied.hsl.blue.hue).toBe(137.25);
+    expect(applied.detail.sharpeningAmount).toBe(137.25);
     expect(applied.geometry).toEqual(target.geometry);
     expect(parsed.name).toBe("Bright");
   });

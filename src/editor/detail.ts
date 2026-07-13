@@ -8,9 +8,9 @@ export interface DetailAdjustments {
 
 export type DetailAdjustmentName = keyof DetailAdjustments;
 export const DETAIL_LIMITS: Record<DetailAdjustmentName, readonly [number, number]> = {
-  sharpeningAmount: [0, 100],
-  sharpeningRadius: [0.5, 3],
-  sharpeningDetail: [0, 100],
+  sharpeningAmount: [0, 200],
+  sharpeningRadius: [0.1, 5],
+  sharpeningDetail: [0, 200],
   luminanceNoiseReduction: [0, 100],
   colorNoiseReduction: [0, 100],
 };

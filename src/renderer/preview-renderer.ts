@@ -1,4 +1,5 @@
 import type { DevelopRecipe } from "../editor/develop-recipe";
+import { DETAIL_LIMITS } from "../editor/detail";
 import { HSL_CHANNELS } from "../editor/hsl";
 import { MAX_LAYERS } from "../editor/masks";
 import {
@@ -123,7 +124,7 @@ vec3 filter_detail(vec2 uv, vec3 centre, out float fine_detail, out float coarse
 
   fine_detail = centre_luma - fine_luma;
   coarse_detail = centre_luma - coarse_luma;
-  float radius_mix = (u_sharpening_radius - 0.5) / 2.5;
+  float radius_mix = (u_sharpening_radius - ${DETAIL_LIMITS.sharpeningRadius[0]}) / ${DETAIL_LIMITS.sharpeningRadius[1] - DETAIL_LIMITS.sharpeningRadius[0]};
   float sharpening_detail = mix(fine_detail, coarse_detail, radius_mix);
   float sharpen_gain = u_sharpening_amount * (0.3 + u_sharpening_detail * 0.9);
   filtered += vec3(sharpening_detail * sharpen_gain);

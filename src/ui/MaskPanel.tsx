@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BASIC_ADJUSTMENT_LIMITS, createDefaultAdjustments, updateAdjustment, type BasicAdjustmentName } from "../editor/basic-adjustments";
 import type { DevelopRecipe } from "../editor/develop-recipe";
-import { createDefaultHsl, HSL_CHANNELS, updateHslChannel, type HslParameter } from "../editor/hsl";
+import { createDefaultHsl, HSL_CHANNELS, HSL_PARAMETER_LIMITS, updateHslChannel, type HslParameter } from "../editor/hsl";
 import {
   MAX_LAYERS,
   MAX_MASK_COMPONENTS,
@@ -27,7 +27,7 @@ const MASK_TYPES: { type: MaskType; label: string; glyph: string }[] = [
 ];
 const BASIC_CONTROLS: { name: BasicAdjustmentName; label: string; step?: number; digits?: number }[] = [
   { name: "temperature", label: "色温" }, { name: "tint", label: "色调" },
-  { name: "exposure", label: "曝光", step: 0.05, digits: 2 }, { name: "contrast", label: "对比度" },
+  { name: "exposure", label: "曝光", step: 0.01, digits: 2 }, { name: "contrast", label: "对比度" },
   { name: "highlights", label: "高光" }, { name: "shadows", label: "阴影" },
   { name: "whites", label: "白色色阶" }, { name: "blacks", label: "黑色色阶" },
   { name: "texture", label: "纹理" }, { name: "clarity", label: "清晰度" },
@@ -133,7 +133,7 @@ export function MaskPanel({
       <PanelSection title="图层调整" badge="BASIC"><div className="sliders">{BASIC_CONTROLS.map((control) => {
         const [minimum, maximum] = BASIC_ADJUSTMENT_LIMITS[control.name];
         return <Slider key={control.name} label={control.label} value={layer.adjustments[control.name]} minimum={minimum} maximum={maximum}
-          step={control.step ?? 1} digits={control.digits} disabled={false}
+          step={control.step ?? 0.1} digits={control.digits ?? 1} disabled={false}
           onChange={(value) => onUpdateLayer({ ...layer, adjustments: updateAdjustment(layer.adjustments, control.name, value) })} />;
       })}</div></PanelSection>
       <PanelSection title="图层曲线" badge="CURVE">
@@ -145,7 +145,8 @@ export function MaskPanel({
           {{ hue: "色相", saturation: "饱和度", luminance: "明亮度" }[name]}</button>)}</div>
         <div className="sliders hsl-sliders">{HSL_CHANNELS.map((channel) => <Slider key={channel}
           label={HSL_LABELS[channel][0]} accent={HSL_LABELS[channel][1]} value={layer.hsl[channel][hslParameter]}
-          minimum={-100} maximum={100} step={1} disabled={false}
+          minimum={HSL_PARAMETER_LIMITS[hslParameter][0]} maximum={HSL_PARAMETER_LIMITS[hslParameter][1]}
+          step={0.1} digits={1} disabled={false}
           onChange={(value) => onUpdateLayer({ ...layer, hsl: updateHslChannel(layer.hsl, channel, hslParameter, value) })} />)}</div>
       </PanelSection>
     </>}

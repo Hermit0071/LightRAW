@@ -10,8 +10,16 @@ describe("HSL adjustments", () => {
     expect(hsl.blue).toEqual({ hue: 0, saturation: 0, luminance: 0 });
   });
 
-  it("clamps a channel edit to the public range", () => {
-    expect(updateHslChannel(createDefaultHsl(), "blue", "saturation", 140).blue.saturation).toBe(100);
+  it("uses a meaningful public range for each HSL parameter", () => {
+    const initial = createDefaultHsl();
+    expect(updateHslChannel(initial, "blue", "hue", 240).blue.hue).toBe(180);
+    expect(updateHslChannel(initial, "blue", "saturation", 240).blue.saturation).toBe(200);
+    expect(updateHslChannel(initial, "blue", "saturation", -140).blue.saturation).toBe(-100);
+    expect(updateHslChannel(initial, "blue", "luminance", -240).blue.luminance).toBe(-200);
+  });
+
+  it("preserves fractional channel edits without rounding", () => {
+    expect(updateHslChannel(createDefaultHsl(), "blue", "hue", 137.25).blue.hue).toBe(137.25);
   });
 
   it("changes the selected hue family without moving a distant family", () => {

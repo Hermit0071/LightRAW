@@ -1,4 +1,4 @@
-import type { DetailAdjustments } from "../editor/detail";
+import { DETAIL_LIMITS, type DetailAdjustments } from "../editor/detail";
 import type { LinearRgb } from "./color-engine";
 
 /**
@@ -34,7 +34,8 @@ export function adjustDetailPixel(
 
   const fineDetail = centreLuma - fineLuma;
   const coarseDetail = centreLuma - coarseLuma;
-  const radiusMix = (detail.sharpeningRadius - 0.5) / 2.5;
+  const [minimumRadius, maximumRadius] = DETAIL_LIMITS.sharpeningRadius;
+  const radiusMix = (detail.sharpeningRadius - minimumRadius) / (maximumRadius - minimumRadius);
   const sharpening = mix(fineDetail, coarseDetail, radiusMix)
     * (detail.sharpeningAmount / 100)
     * (0.3 + detail.sharpeningDetail / 100 * 0.9);

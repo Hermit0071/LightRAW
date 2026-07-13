@@ -26,7 +26,12 @@ describe("basic adjustment recipe", () => {
   it("clamps edits to the public parameter ranges", () => {
     const initial = createDefaultAdjustments();
 
-    expect(updateAdjustment(initial, "exposure", 9).exposure).toBe(5);
-    expect(updateAdjustment(initial, "temperature", -140).temperature).toBe(-100);
+    expect(updateAdjustment(initial, "exposure", 12).exposure).toBe(10);
+    expect(updateAdjustment(initial, "temperature", -240).temperature).toBe(-200);
+    expect(updateAdjustment(initial, "saturation", -140).saturation).toBe(-100);
+  });
+
+  it("preserves fractional edits without rounding", () => {
+    expect(updateAdjustment(createDefaultAdjustments(), "contrast", 137.25).contrast).toBe(137.25);
   });
 });

@@ -20,19 +20,19 @@ export const BASIC_ADJUSTMENT_LIMITS: Record<
   BasicAdjustmentName,
   readonly [number, number]
 > = {
-  temperature: [-100, 100],
-  tint: [-100, 100],
-  exposure: [-5, 5],
-  contrast: [-100, 100],
-  highlights: [-100, 100],
-  shadows: [-100, 100],
-  whites: [-100, 100],
-  blacks: [-100, 100],
-  texture: [-100, 100],
-  clarity: [-100, 100],
-  dehaze: [-100, 100],
-  vibrance: [-100, 100],
-  saturation: [-100, 100],
+  temperature: [-200, 200],
+  tint: [-200, 200],
+  exposure: [-10, 10],
+  contrast: [-200, 200],
+  highlights: [-200, 200],
+  shadows: [-200, 200],
+  whites: [-200, 200],
+  blacks: [-200, 200],
+  texture: [-200, 200],
+  clarity: [-200, 200],
+  dehaze: [-200, 200],
+  vibrance: [-200, 200],
+  saturation: [-100, 200],
 };
 
 export function createDefaultAdjustments(): BasicAdjustments {

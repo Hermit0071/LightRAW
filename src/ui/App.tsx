@@ -63,8 +63,9 @@ import { PresetPanel } from "./PresetPanel";
 import { ExportPanel, type ExportUiOptions } from "./ExportPanel";
 import { LibraryGrid } from "./LibraryGrid";
 import { LibraryPanel } from "./LibraryPanel";
+import { resolveShortcut, type ShortcutTool } from "./shortcuts";
 
-type ActiveTool = "library" | "adjust" | "crop" | "mask" | "preset" | "export";
+type ActiveTool = ShortcutTool;
 const FULL_CROP = { x: 0, y: 0, width: 1, height: 1 } as const;
 const PRESET_STORAGE_KEY = "lightraw.presets.v1";
 type EditTransactionKind = "pointer" | "text";
@@ -520,33 +521,29 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      const shortcut = resolveShortcut(event);
+      if (!shortcut) return;
       const command = event.metaKey || event.ctrlKey;
       if (exportingRef.current || importingRef.current || !catalogLoadedRef.current) {
-        if (command && event.key.toLowerCase() === "o") event.preventDefault();
+        if (shortcut.type === "import") event.preventDefault();
         return;
       }
-      if (command && event.key.toLowerCase() === "o") {
+      if (shortcut.type === "import") {
         event.preventDefault();
         void openPhoto();
-      } else if (command && event.key.toLowerCase() === "z") {
-        if (isTextEditingTarget(event.target)) return;
-        event.preventDefault();
-        setHistory((current) => event.shiftKey ? redoHistory(current) : undoHistory(current));
-      } else if (command && event.key.toLowerCase() === "y") {
-        if (isTextEditingTarget(event.target)) return;
-        event.preventDefault();
-        setHistory((current) => redoHistory(current));
       } else if (isTextEditingTarget(event.target) || event.target instanceof HTMLSelectElement) {
         return;
-      } else if (event.key === "\\" && photo) {
+      } else if (shortcut.type === "undo" || shortcut.type === "redo") {
+        event.preventDefault();
+        setHistory((current) => shortcut.type === "undo" ? undoHistory(current) : redoHistory(current));
+      } else if (shortcut.type === "compare" && photo) {
         event.preventDefault();
         setShowBefore((current) => !current);
-      } else if (!command && activePhotoId && /^[0-5]$/.test(event.key)) {
-        changeRating(activePhotoId, Number(event.key) as PhotoRating);
-      } else if (!command && ["g", "x"].includes(event.key.toLowerCase())) {
-        setActiveTool(event.key.toLowerCase() === "g" ? "library" : "export");
-      } else if (!command && photo && ["c", "m", "e", "p"].includes(event.key.toLowerCase())) {
-        setActiveTool(({ c: "crop", m: "mask", e: "adjust", p: "preset" } as const)[event.key.toLowerCase() as "c" | "m" | "e" | "p"]);
+      } else if (shortcut.type === "rating" && activePhotoId) {
+        changeRating(activePhotoId, shortcut.value as PhotoRating);
+      } else if (shortcut.type === "tool" && (photo || ["library", "preset", "export"].includes(shortcut.tool))) {
+        if (command) event.preventDefault();
+        setActiveTool(shortcut.tool);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -575,9 +572,9 @@ export default function App() {
         <div className="file-summary">
           {photo ? <><strong>{photo.fileName}</strong><span>{photo.sourceWidth} × {photo.sourceHeight}</span></> : <span>非破坏性 RAW 工作区</span>}
         </div>
-        <div className="top-actions"><button className="history-button" type="button" aria-label="撤销" title="撤销 ⌘Z"
+        <div className="top-actions"><button className="history-button" type="button" aria-label="撤销" title="撤销 · ⌘/Ctrl+Z"
           disabled={history.past.length === 0 || workspaceBusy} onClick={() => setHistory((current) => undoHistory(current))}>↶</button>
-          <button className="history-button" type="button" aria-label="重做" title="重做 ⇧⌘Z"
+          <button className="history-button" type="button" aria-label="重做" title="重做 · ⇧⌘/Ctrl+Z 或 Ctrl+Y"
             disabled={history.future.length === 0 || workspaceBusy} onClick={() => setHistory((current) => redoHistory(current))}>↷</button>
           <button className={`compare-button ${showBefore ? "active" : ""}`} type="button" disabled={!photo || workspaceBusy}
             title="前后对比 \\" onClick={() => setShowBefore((current) => !current)}>{showBefore ? "原图" : "前后"}</button>
@@ -586,21 +583,21 @@ export default function App() {
       </header>
 
       <aside className="tool-rail" aria-label="编辑工具">
-        <button className={`tool-button ${activeTool === "library" ? "active" : ""}`} type="button" disabled={workspaceBusy} onClick={() => setActiveTool("library")}>
+        <button className={`tool-button ${activeTool === "library" ? "active" : ""}`} type="button" title="图库 · G" disabled={workspaceBusy} onClick={() => setActiveTool("library")}>
           <LibraryIcon /><span>图库</span>
         </button>
         <div className="tool-rule" />
-        <button className={`tool-button ${activeTool === "adjust" ? "active" : ""}`} type="button" disabled={workspaceBusy} onClick={() => setActiveTool("adjust")}>
+        <button className={`tool-button ${activeTool === "adjust" ? "active" : ""}`} type="button" title="调色 · D（兼容 E）" disabled={workspaceBusy} onClick={() => setActiveTool("adjust")}>
           <AdjustIcon /><span>调色</span>
         </button>
         <div className="tool-rule" />
-        <button className={`tool-button ${activeTool === "crop" ? "active" : ""}`} type="button" disabled={!photo || workspaceBusy} onClick={() => setActiveTool("crop")}>
+        <button className={`tool-button ${activeTool === "crop" ? "active" : ""}`} type="button" title="裁剪 · R（兼容 C）" disabled={!photo || workspaceBusy} onClick={() => setActiveTool("crop")}>
           <CropIcon /><span>裁剪</span>
         </button>
-        <button className={`tool-button ${activeTool === "mask" ? "active" : ""}`} type="button" disabled={!photo || workspaceBusy} onClick={() => setActiveTool("mask")}><MaskIcon /><span>蒙版</span></button>
-        <button className={`tool-button ${activeTool === "preset" ? "active" : ""}`} type="button" disabled={workspaceBusy} onClick={() => setActiveTool("preset")}><PresetIcon /><span>预设</span></button>
+        <button className={`tool-button ${activeTool === "mask" ? "active" : ""}`} type="button" title="蒙版 · M" disabled={!photo || workspaceBusy} onClick={() => setActiveTool("mask")}><MaskIcon /><span>蒙版</span></button>
+        <button className={`tool-button ${activeTool === "preset" ? "active" : ""}`} type="button" title="预设 · P" disabled={workspaceBusy} onClick={() => setActiveTool("preset")}><PresetIcon /><span>预设</span></button>
         <button className={`tool-button ${activeTool === "export" ? "active" : ""}`} type="button" disabled={(!photo && selectedPhotoIds.length === 0) || workspaceBusy}
-          onClick={() => setActiveTool("export")}><ExportIcon /><span>导出</span></button>
+          title="导出 · ⌘/Ctrl+Shift+E（兼容 X）" onClick={() => setActiveTool("export")}><ExportIcon /><span>导出</span></button>
         <div className="gpu-badge"><i />GPU</div>
       </aside>
 

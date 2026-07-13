@@ -32,4 +32,16 @@ describe("detail engine", () => {
     expect(texture[0]).toBeGreaterThan(0.6);
     expect(clarity[0]).toBeGreaterThan(0.6);
   });
+
+  it("maps the expanded sharpening radius endpoints to fine and coarse detail", () => {
+    const detail = { ...createDefaultDetail(), sharpeningAmount: 100, sharpeningDetail: 0 };
+    const fine = adjustDetailPixel([0.6, 0.6, 0.6], [0.5, 0.5, 0.5], [0.2, 0.2, 0.2], {
+      ...detail, sharpeningRadius: 0.1,
+    });
+    const coarse = adjustDetailPixel([0.6, 0.6, 0.6], [0.5, 0.5, 0.5], [0.2, 0.2, 0.2], {
+      ...detail, sharpeningRadius: 5,
+    });
+    expect(fine[0]).toBeCloseTo(0.63, 6);
+    expect(coarse[0]).toBeCloseTo(0.72, 6);
+  });
 });

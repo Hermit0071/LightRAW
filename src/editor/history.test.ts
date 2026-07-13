@@ -15,6 +15,13 @@ describe("non-destructive edit history", () => {
     expect(history.present.exposure).toBe(1);
   });
 
+  it("preserves fractional values through undo and redo", () => {
+    let history = commitHistory(createHistory({ exposure: 0 }), { exposure: 1.37 });
+    history = undoHistory(history);
+    expect(history.present.exposure).toBe(0);
+    expect(redoHistory(history).present.exposure).toBe(1.37);
+  });
+
   it("drops the redo branch after a new edit and resets per photo", () => {
     let history = commitHistory(createHistory({ value: 0 }), { value: 1 });
     history = undoHistory(history);

@@ -8,6 +8,7 @@ import { DETAIL_LIMITS, updateDetail, type DetailAdjustmentName } from "../edito
 import type { DevelopRecipe } from "../editor/develop-recipe";
 import {
   HSL_CHANNELS,
+  HSL_PARAMETER_LIMITS,
   updateHslChannel,
   type HslParameter,
 } from "../editor/hsl";
@@ -16,12 +17,12 @@ import { Histogram } from "./Histogram";
 import { PanelSection, Slider } from "./controls";
 import { ToneCurveEditor } from "./ToneCurveEditor";
 
-interface BasicSlider { name: BasicAdjustmentName; label: string; step?: number; }
+interface BasicSlider { name: BasicAdjustmentName; label: string; step?: number; digits?: number; }
 const WHITE_BALANCE: BasicSlider[] = [
   { name: "temperature", label: "色温" }, { name: "tint", label: "色调" },
 ];
 const TONE: BasicSlider[] = [
-  { name: "exposure", label: "曝光", step: 0.05 }, { name: "contrast", label: "对比度" },
+  { name: "exposure", label: "曝光", step: 0.01, digits: 2 }, { name: "contrast", label: "对比度" },
   { name: "highlights", label: "高光" }, { name: "shadows", label: "阴影" },
   { name: "whites", label: "白色色阶" }, { name: "blacks", label: "黑色色阶" },
 ];
@@ -37,7 +38,7 @@ const HSL_LABELS = {
 } as const;
 const DETAIL: { name: DetailAdjustmentName; label: string; step?: number; digits?: number }[] = [
   { name: "sharpeningAmount", label: "锐化数量" },
-  { name: "sharpeningRadius", label: "锐化半径", step: 0.1, digits: 1 },
+  { name: "sharpeningRadius", label: "锐化半径", step: 0.01, digits: 2 },
   { name: "sharpeningDetail", label: "锐化细节" },
   { name: "luminanceNoiseReduction", label: "明亮度降噪" },
   { name: "colorNoiseReduction", label: "颜色降噪" },
@@ -84,7 +85,8 @@ export function AdjustmentPanel({ recipe, histogram, disabled, onChange, onReset
             label={HSL_LABELS[channel][0]}
             accent={HSL_LABELS[channel][1]}
             value={recipe.hsl[channel][hslParameter]}
-            minimum={-100} maximum={100} step={1} disabled={disabled}
+            minimum={HSL_PARAMETER_LIMITS[hslParameter][0]} maximum={HSL_PARAMETER_LIMITS[hslParameter][1]}
+            step={0.1} digits={1} disabled={disabled}
             onChange={(value) => onChange({ ...recipe, hsl: updateHslChannel(recipe.hsl, channel, hslParameter, value) })}
           />
         ))}</div>
@@ -92,7 +94,7 @@ export function AdjustmentPanel({ recipe, histogram, disabled, onChange, onReset
       <PanelSection title="细节" badge="DETAIL"><div className="sliders">{DETAIL.map((item) => {
         const [minimum, maximum] = DETAIL_LIMITS[item.name];
         return <Slider key={item.name} label={item.label} value={recipe.detail[item.name]} minimum={minimum} maximum={maximum}
-          step={item.step ?? 1} digits={item.digits} disabled={disabled}
+          step={item.step ?? 0.1} digits={item.digits ?? 1} disabled={disabled}
           onChange={(value) => onChange({ ...recipe, detail: updateDetail(recipe.detail, item.name, value) })} />;
       })}</div></PanelSection>
       <div className="panel-footer"><span>16-bit linear preview</span><span>WebGL 2</span></div>
@@ -106,7 +108,7 @@ function BasicControl({ item, recipe, disabled, onChange }: {
 }) {
   const [minimum, maximum] = BASIC_ADJUSTMENT_LIMITS[item.name];
   return <Slider label={item.label} value={recipe.basic[item.name]} minimum={minimum} maximum={maximum}
-    step={item.step ?? 1} digits={item.name === "exposure" ? 2 : 0} disabled={disabled}
+    step={item.step ?? 0.1} digits={item.digits ?? 1} disabled={disabled}
     onChange={(value) => onChange(item.name, value)} />;
 }
 

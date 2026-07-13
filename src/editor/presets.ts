@@ -1,7 +1,7 @@
 import type { DevelopRecipe } from "./develop-recipe";
 import { BASIC_ADJUSTMENT_LIMITS } from "./basic-adjustments";
 import { DETAIL_LIMITS } from "./detail";
-import { HSL_CHANNELS } from "./hsl";
+import { HSL_CHANNELS, HSL_PARAMETER_LIMITS } from "./hsl";
 import { MAX_LAYERS, MAX_MASK_COMPONENTS, type AdjustmentLayer, type MaskComponent } from "./masks";
 import { MAX_CURVE_POINTS, MIN_CURVE_POINT_GAP } from "./tone-curve";
 
@@ -90,9 +90,7 @@ function validNumbers(value: unknown, limits: Record<string, readonly [number, n
 
 function validHsl(value: unknown): boolean {
   if (!isRecord(value) || Object.keys(value).length !== HSL_CHANNELS.length) return false;
-  return HSL_CHANNELS.every((name) => validNumbers(value[name], {
-    hue: [-100, 100], saturation: [-100, 100], luminance: [-100, 100],
-  }));
+  return HSL_CHANNELS.every((name) => validNumbers(value[name], HSL_PARAMETER_LIMITS));
 }
 
 function validCurves(value: unknown): boolean {
