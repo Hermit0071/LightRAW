@@ -8,6 +8,7 @@ import {
   type CurvePoint,
   type ToneCurves,
 } from "../editor/tone-curve";
+import { useI18n } from "./i18n";
 
 const CHANNELS: { name: CurveChannel; label: string }[] = [
   { name: "master", label: "RGB" }, { name: "red", label: "R" },
@@ -19,6 +20,7 @@ export function ToneCurveEditor({ curves, disabled, onChange }: {
   disabled: boolean;
   onChange: (curves: ToneCurves) => void;
 }) {
+  const { t } = useI18n();
   const [channel, setChannel] = useState<CurveChannel>("master");
   const dragging = useRef<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -87,7 +89,7 @@ export function ToneCurveEditor({ curves, disabled, onChange }: {
           />
         ))}
       </svg>
-      <p>点击添加 · 拖动调整 · 双击删除</p>
+      <p>{t("点击添加 · 拖动调整 · 双击删除", "Click to add · drag to adjust · double-click to remove")}</p>
     </div>
   );
 }

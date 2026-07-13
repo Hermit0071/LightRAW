@@ -3,6 +3,7 @@ import { mapOutputToSource, mapSourceToOutput, type GeometrySettings } from "../
 import type { BrushSettings } from "./MaskPanel";
 import type { MaskComponent, MaskPoint } from "../editor/masks";
 import type { PreviewLayout } from "../renderer/preview-renderer";
+import { useI18n } from "./i18n";
 
 type Drag = { kind: "linear-end" | "radial" | "radial-x" | "radial-y" | "brush" | "linear-start" | "radial-center"; stroke?: number }
   | { kind: "pen-point"; index: number };
@@ -17,6 +18,7 @@ export function MaskOverlay({ layout, mask, geometry, imageWidth, imageHeight, b
   onUpdate: (mask: MaskComponent) => void;
   onSample: (point: MaskPoint) => readonly [number, number, number];
 }) {
+  const { t } = useI18n();
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<Drag | null>(null);
   const aspect = imageWidth / imageHeight;
@@ -105,7 +107,7 @@ export function MaskOverlay({ layout, mask, geometry, imageWidth, imageHeight, b
     {mask.type === "pen" && <><polyline className={mask.closed ? "pen-path closed" : "pen-path"}
       points={mask.points.map(toOutput).map((point) => `${point.x * 1000},${point.y * 1000}`).join(" ")} />
       {mask.points.map((point, index) => <Handle key={index} point={toOutput(point)} onDown={(event) => startHandle(event, { kind: "pen-point", index })} />)}</>}
-    {mask.type === "chroma" && <text x="500" y="55" textAnchor="middle">点击照片选择颜色</text>}
+    {mask.type === "chroma" && <text x="500" y="55" textAnchor="middle">{t("点击照片选择颜色", "Click the photo to sample a color")}</text>}
   </svg>;
 }
 

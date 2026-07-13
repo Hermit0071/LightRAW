@@ -9,6 +9,7 @@ import {
 } from "../editor/geometry";
 import { PanelSection, Slider } from "./controls";
 import { PanelHeading } from "./AdjustmentPanel";
+import { useI18n } from "./i18n";
 
 export function CropPanel({ recipe, imageAspect, disabled, freeCropEnabled, onChange }: {
   recipe: DevelopRecipe;
@@ -17,6 +18,7 @@ export function CropPanel({ recipe, imageAspect, disabled, freeCropEnabled, onCh
   freeCropEnabled: boolean;
   onChange: (recipe: DevelopRecipe) => void;
 }) {
+  const { t } = useI18n();
   const geometry = recipe.geometry;
   function setAspect(aspect: CropAspect) {
     if (aspect === "free") {
@@ -32,32 +34,32 @@ export function CropPanel({ recipe, imageAspect, disabled, freeCropEnabled, onCh
     } });
   }
   return (
-    <aside className="adjustments-panel crop-panel" aria-label="裁剪与几何">
-      <PanelHeading title="裁剪与几何" disabled={disabled} onReset={() => onChange({ ...recipe, geometry: createDefaultGeometry() })} />
-      <PanelSection title="裁剪比例" badge="CROP">
+    <aside className="adjustments-panel crop-panel" aria-label={t("裁剪与几何", "Crop and geometry")}>
+      <PanelHeading title={t("裁剪与几何", "Crop and geometry")} disabled={disabled} onReset={() => onChange({ ...recipe, geometry: createDefaultGeometry() })} />
+      <PanelSection title={t("裁剪比例", "Aspect ratio")} badge="CROP">
         <div className="aspect-grid">
           {(["free", "1:1", "4:3", "16:9", "3:2"] as CropAspect[]).map((aspect) => (
             <button key={aspect} type="button" className={geometry.aspect === aspect ? "active" : ""} disabled={disabled} onClick={() => setAspect(aspect)}>
-              {aspect === "free" ? "自由" : aspect}
+              {aspect === "free" ? t("自由", "Free") : aspect}
             </button>
           ))}
         </div>
         <p className="tool-help">{freeCropEnabled
-          ? "拖动预览边框或四角手柄进行自由裁剪。"
-          : "当前显示拉直后的最终裁剪；角度归零后可继续拖动自由裁剪。"}</p>
+          ? t("拖动预览边框或四角手柄进行自由裁剪。", "Drag the frame or corner handles to crop freely.")
+          : t("当前显示拉直后的最终裁剪；角度归零后可继续拖动自由裁剪。", "The final straightened crop is shown; set the angle to zero to crop freely.")}</p>
       </PanelSection>
-      <PanelSection title="拉直" badge="ANGLE">
-        <div className="sliders"><Slider label="角度" value={geometry.straighten} minimum={-45} maximum={45} step={0.1} digits={1}
+      <PanelSection title={t("拉直", "Straighten")} badge="ANGLE">
+        <div className="sliders"><Slider label={t("角度", "Angle")} value={geometry.straighten} minimum={-45} maximum={45} step={0.1} digits={1}
           disabled={disabled} onChange={(value) => onChange({ ...recipe, geometry: updateStraighten(geometry, value) })} /></div>
       </PanelSection>
-      <PanelSection title="旋转与翻转" badge="GEOMETRY">
+      <PanelSection title={t("旋转与翻转", "Rotate and flip")} badge="GEOMETRY">
         <div className="geometry-buttons">
-          <button type="button" disabled={disabled} onClick={() => onChange({ ...recipe, geometry: rotateGeometry(geometry, "counterclockwise") })}>↶ <span>左转 90°</span></button>
-          <button type="button" disabled={disabled} onClick={() => onChange({ ...recipe, geometry: rotateGeometry(geometry, "clockwise") })}>↷ <span>右转 90°</span></button>
+          <button type="button" disabled={disabled} onClick={() => onChange({ ...recipe, geometry: rotateGeometry(geometry, "counterclockwise") })}>↶ <span>{t("左转 90°", "Rotate left 90°")}</span></button>
+          <button type="button" disabled={disabled} onClick={() => onChange({ ...recipe, geometry: rotateGeometry(geometry, "clockwise") })}>↷ <span>{t("右转 90°", "Rotate right 90°")}</span></button>
           <button type="button" className={geometry.flipHorizontal ? "active" : ""} disabled={disabled}
-            onClick={() => onChange({ ...recipe, geometry: { ...geometry, flipHorizontal: !geometry.flipHorizontal } })}>↔ <span>水平翻转</span></button>
+            onClick={() => onChange({ ...recipe, geometry: { ...geometry, flipHorizontal: !geometry.flipHorizontal } })}>↔ <span>{t("水平翻转", "Flip horizontal")}</span></button>
           <button type="button" className={geometry.flipVertical ? "active" : ""} disabled={disabled}
-            onClick={() => onChange({ ...recipe, geometry: { ...geometry, flipVertical: !geometry.flipVertical } })}>↕ <span>垂直翻转</span></button>
+            onClick={() => onChange({ ...recipe, geometry: { ...geometry, flipVertical: !geometry.flipVertical } })}>↕ <span>{t("垂直翻转", "Flip vertical")}</span></button>
         </div>
       </PanelSection>
       <div className="crop-readout">

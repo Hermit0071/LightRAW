@@ -55,6 +55,7 @@ Clone this repository and follow the macOS or Windows build instructions below. 
 - `\` 前后对比、`G/D/R/M/P` 切换图库/调色/裁剪/蒙版/预设、`0–5` 评分；图库中可用 `F2` 重命名、`Delete/Backspace` 打开删除选择；保留 `E/C/X` 作为调色/裁剪/导出兼容键
 - 调色与 HSL 滑块支持扩展范围和 0.1 浮点步进，曝光与锐化半径支持 0.01 步进
 - WebGL 2 实时预览
+- 中文 / English 界面一键切换，语言偏好保存在本机
 - 参考专业摄影软件工作流的三栏界面、底部胶片栏、可伸缩检查器，以及深色/灰色/浅色三种主题
 
 RAW 兼容性最终取决于 LibRaw 对具体相机型号及记录格式的支持情况。

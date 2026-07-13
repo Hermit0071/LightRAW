@@ -7,6 +7,7 @@ import {
   type GeometrySettings,
 } from "../editor/geometry";
 import type { PreviewLayout } from "../renderer/preview-renderer";
+import { useI18n } from "./i18n";
 
 const HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const;
 type Handle = (typeof HANDLES)[number];
@@ -16,6 +17,7 @@ export function CropOverlay({ layout, geometry, onChange }: {
   geometry: GeometrySettings;
   onChange: (crop: CropRect) => void;
 }) {
+  const { t } = useI18n();
   const displayCrop = cropToDisplay(geometry.crop, geometry);
   const drag = useRef<{ handle: Handle; x: number; y: number; crop: CropRect } | null>(null);
   const frame = {
@@ -48,7 +50,7 @@ export function CropOverlay({ layout, geometry, onChange }: {
     <div className="crop-overlay" style={frame}>
       <div className="crop-thirds horizontal one" /><div className="crop-thirds horizontal two" />
       <div className="crop-thirds vertical one" /><div className="crop-thirds vertical two" />
-      {HANDLES.map((handle) => <button key={handle} type="button" className={`crop-handle ${handle}`} aria-label={`裁剪手柄 ${handle}`}
+      {HANDLES.map((handle) => <button key={handle} type="button" className={`crop-handle ${handle}`} aria-label={`${t("裁剪手柄", "Crop handle")} ${handle}`}
         onPointerDown={(event) => start(event, handle)} onPointerMove={move} onPointerUp={() => { drag.current = null; }} />)}
     </div>
   );

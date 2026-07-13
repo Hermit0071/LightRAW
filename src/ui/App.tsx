@@ -79,6 +79,7 @@ import { LibraryGrid } from "./LibraryGrid";
 import { LibraryManagementDialog, type LibraryManagementDialogMode } from "./LibraryManagementDialog";
 import { LibraryPanel } from "./LibraryPanel";
 import { WorkspaceNavigator, type GpuStatus } from "./WorkspaceNavigator";
+import { I18nProvider, LOCALE_STORAGE_KEY, normalizeLocale, translate, useI18n, type AppLocale } from "./i18n";
 import { resolveShortcut, type ShortcutTool } from "./shortcuts";
 import { buildRenameRequests } from "./file-management";
 import {
@@ -157,6 +158,8 @@ export default function App() {
   const [fileOperationProgress, setFileOperationProgress] = useState("");
   const [libraryCollection, setLibraryCollection] = useState<LibraryCollection>("all");
   const [workspaceTheme, setWorkspaceTheme] = useState<WorkspaceTheme>(loadWorkspaceTheme);
+  const [locale, setLocale] = useState<AppLocale>(loadLocale);
+  const t = (zh: string, en: string) => translate(locale, zh, en);
   const [inspectorWidth, setInspectorWidth] = useState(loadInspectorWidth);
   const [exportOptions, setExportOptions] = useState<ExportUiOptions>({
     format: "jpeg", sizeMode: "percent", sizeValue: 100, quality: 90, watermark: "",
@@ -228,7 +231,7 @@ export default function App() {
       if (photos.length > 0) setActiveTool("library");
       if (result.recovered) {
         setStatus("error");
-        setMessage("图库主文件无效，已从上一份有效备份恢复。");
+        setMessage(t("图库主文件无效，已从上一份有效备份恢复。", "The catalog was invalid and has been restored from the latest valid backup."));
       }
       setCatalogLoaded(true);
     }).catch((error) => {
@@ -266,7 +269,7 @@ export default function App() {
       event.preventDefault();
       if (exportingRef.current || importingRef.current || fileOperationRef.current) {
         setStatus("error");
-        setMessage("请等待当前导入、导出或文件操作完成后再关闭 LightRAW。");
+        setMessage(t("请等待当前导入、导出或文件操作完成后再关闭 LightRAW。", "Wait for the current import, export, or file operation to finish before closing LightRAW."));
         return;
       }
       closingRef.current = true;
@@ -315,7 +318,7 @@ export default function App() {
       for (let index = 0; index < paths.length; index += 1) {
         const path = paths[index];
         if (known.has(path)) continue;
-        setMessage(`正在生成缩略图 ${index + 1} / ${paths.length}`);
+        setMessage(t(`正在生成缩略图 ${index + 1} / ${paths.length}`, `Generating thumbnails ${index + 1} / ${paths.length}`));
         try {
           const opened = await openImagePath(path, 512);
           const pixels = previewPixels(opened);
@@ -339,7 +342,7 @@ export default function App() {
       setActiveTool("library");
       if (failures.length > 0) {
         setStatus("error");
-        setMessage(`已导入 ${imported.length} 张，${failures.length} 张失败。${failures[0]}`);
+        setMessage(t(`已导入 ${imported.length} 张，${failures.length} 张失败。${failures[0]}`, `Imported ${imported.length}; ${failures.length} failed. ${failures[0]}`));
       } else {
         setStatus("ready");
         setMessage("");
@@ -356,7 +359,7 @@ export default function App() {
     if (exportingRef.current || importingRef.current || !catalogLoadedRef.current) return;
     settleEditTransaction();
     setStatus("loading");
-    setMessage("正在解码高精度预览…");
+    setMessage(t("正在解码高精度预览…", "Decoding high-quality preview…"));
     try {
       const opened = await openImagePath(item.path);
       showOpenedPreview(opened, item);
@@ -382,8 +385,8 @@ export default function App() {
   }
 
   function createPhotoMask(type: MaskType) {
-    const mask = createMaskComponent(type, crypto.randomUUID());
-    const layer = createAdjustmentLayer(crypto.randomUUID(), mask);
+    const mask = { ...createMaskComponent(type, crypto.randomUUID()), name: localizedMaskName(type, t) };
+    const layer = { ...createAdjustmentLayer(crypto.randomUUID(), mask), name: mask.name };
     setRecipe((current) => ({ ...current, layers: addLayer(current.layers, layer) }));
     setSelectedLayerId(layer.id);
     setSelectedMaskId(mask.id);
@@ -391,7 +394,7 @@ export default function App() {
 
   function addSelection(type: MaskType, mode: MaskCombineMode) {
     if (!selectedLayer) return;
-    const mask = createMaskComponent(type, crypto.randomUUID(), selectedLayer.mask.components.length === 0 ? "add" : mode);
+    const mask = { ...createMaskComponent(type, crypto.randomUUID(), selectedLayer.mask.components.length === 0 ? "add" : mode), name: localizedMaskName(type, t) };
     changeLayer(addMaskComponent(selectedLayer, mask));
     setSelectedMaskId(mask.id);
   }
@@ -461,7 +464,7 @@ export default function App() {
 
   function openRenameDialog() {
     if (selectedPhotos.length === 0) return;
-    setRenameValue(selectedPhotos.length === 1 ? selectedPhotos[0].fileName : "Photo");
+    setRenameValue(selectedPhotos.length === 1 ? selectedPhotos[0].fileName : t("照片", "Photo"));
     setManagementDialog("rename");
   }
 
@@ -477,12 +480,12 @@ export default function App() {
   async function confirmRename() {
     let requests;
     try { requests = buildRenameRequests(selectedPhotos, renameValue); } catch (error) { showFileOperationError(error); return; }
-    if (!beginFileOperation(`正在重命名 ${requests.length} 个文件…`)) return;
+    if (!beginFileOperation(t(`正在重命名 ${requests.length} 个文件…`, `Renaming ${requests.length} file(s)…`))) return;
     setManagementDialog(null);
     try {
       const outcomes = await renamePhotoFiles(requests);
       applyRelocations(successfulRelocations(outcomes));
-      reportFileOutcomes("重命名", outcomes);
+      reportFileOutcomes(t("重命名", "Rename"), outcomes);
     } catch (error) {
       showFileOperationError(error);
     } finally {
@@ -494,7 +497,7 @@ export default function App() {
     const targets = selectedPhotos;
     if (targets.length === 0) return;
     const directory = await chooseTargetDirectory();
-    if (!directory || !beginFileOperation(`正在复制 ${targets.length} 个文件…`)) return;
+    if (!directory || !beginFileOperation(t(`正在复制 ${targets.length} 个文件…`, `Copying ${targets.length} file(s)…`))) return;
     try {
       const outcomes = await copyPhotoFiles(targets.map((item) => item.path), directory);
       const relocations = successfulRelocations(outcomes);
@@ -505,7 +508,7 @@ export default function App() {
       libraryRef.current = next;
       setLibrary(next);
       setSelectedPhotoIds(new Set(copies.map((item) => item.id)));
-      reportFileOutcomes("复制", outcomes);
+      reportFileOutcomes(t("复制", "Copy"), outcomes);
     } catch (error) {
       showFileOperationError(error);
     } finally {
@@ -517,11 +520,11 @@ export default function App() {
     const targets = selectedPhotos;
     if (targets.length === 0) return;
     const directory = await chooseTargetDirectory();
-    if (!directory || !beginFileOperation(`正在移动 ${targets.length} 个文件…`)) return;
+    if (!directory || !beginFileOperation(t(`正在移动 ${targets.length} 个文件…`, `Moving ${targets.length} file(s)…`))) return;
     try {
       const outcomes = await movePhotoFiles(targets.map((item) => item.path), directory);
       applyRelocations(successfulRelocations(outcomes));
-      reportFileOutcomes("移动", outcomes);
+      reportFileOutcomes(t("移动", "Move"), outcomes);
     } catch (error) {
       showFileOperationError(error);
     } finally {
@@ -531,7 +534,7 @@ export default function App() {
 
   async function removeSelectedFromCatalog() {
     const ids = new Set(selectedPhotos.map((item) => item.id));
-    if (ids.size === 0 || !beginFileOperation(`正在从图库移除 ${ids.size} 张照片…`)) return;
+    if (ids.size === 0 || !beginFileOperation(t(`正在从图库移除 ${ids.size} 张照片…`, `Removing ${ids.size} photo(s) from the library…`))) return;
     setManagementDialog(null);
     try {
       removeCatalogRecords(ids);
@@ -547,7 +550,7 @@ export default function App() {
 
   async function moveSelectedToTrash() {
     const targets = selectedPhotos;
-    if (targets.length === 0 || !beginFileOperation(`正在移到系统废纸篓 / 回收站…`)) return;
+    if (targets.length === 0 || !beginFileOperation(t("正在移到系统废纸篓 / 回收站…", "Moving to the system Trash / Recycle Bin…"))) return;
     setManagementDialog(null);
     try {
       const outcomes = await trashPhotoFiles(targets.map((item) => item.path));
@@ -555,7 +558,7 @@ export default function App() {
       const ids = new Set(targets.filter((item) => removedPaths.has(item.path)).map((item) => item.id));
       removeCatalogRecords(ids);
       await removeCatalogThumbnails([...ids]);
-      reportFileOutcomes("移到废纸篓 / 回收站", outcomes);
+      reportFileOutcomes(t("移到废纸篓 / 回收站", "Move to Trash / Recycle Bin"), outcomes);
     } catch (error) {
       showFileOperationError(error);
     } finally {
@@ -612,7 +615,7 @@ export default function App() {
     const failures = outcomes.filter((item) => item.error);
     if (failures.length > 0) {
       setStatus("error");
-      setMessage(`${label}完成 ${outcomes.length - failures.length} 个，失败 ${failures.length} 个。${failures[0].error}`);
+      setMessage(t(`${label}完成 ${outcomes.length - failures.length} 个，失败 ${failures.length} 个。${failures[0].error}`, `${label} completed ${outcomes.length - failures.length}; ${failures.length} failed. ${failures[0].error}`));
     } else {
       setStatus(activePhotoIdRef.current ? "ready" : "idle");
       setMessage("");
@@ -644,24 +647,24 @@ export default function App() {
   async function exportPhotos(items: LibraryPhoto[], target: { path?: string; directory?: string }) {
     if (exportingRef.current) return;
     exportingRef.current = true;
-    setExportProgress(`准备导出 0 / ${items.length}`);
+    setExportProgress(t(`准备导出 0 / ${items.length}`, `Preparing export 0 / ${items.length}`));
     const fileNames = target.directory
       ? batchExportFileNames(items.map((item) => item.fileName), exportOptions.format)
       : [];
     try {
       for (let index = 0; index < items.length; index += 1) {
         const item = items[index];
-        setExportProgress(`正在渲染 ${index + 1} / ${items.length}`);
+        setExportProgress(t(`正在渲染 ${index + 1} / ${items.length}`, `Rendering ${index + 1} / ${items.length}`));
         const dimensions = calculateExportDimensions(item.sourceWidth, item.sourceHeight, item.recipe.geometry, {
           mode: exportOptions.sizeMode, value: exportOptions.sizeValue,
         });
-        if (Math.max(dimensions.width, dimensions.height) > 16_384) throw new RangeError("导出边长不能超过 16384 像素");
+        if (Math.max(dimensions.width, dimensions.height) > 16_384) throw new RangeError(t("导出边长不能超过 16384 像素", "The export edge cannot exceed 16,384 pixels"));
         const decodeEdge = calculateDecodeLongEdge(item.sourceWidth, item.sourceHeight, item.recipe.geometry, dimensions);
         const opened = await openImagePath(item.path, decodeEdge);
         rendererRef.current?.setRecipe(item.recipe);
         rendererRef.current?.setImage(opened.info.width, opened.info.height, opened.pixels);
         const rendered = rendererRef.current?.renderExport(dimensions.width, dimensions.height);
-        if (!rendered) throw new Error("GPU 导出引擎尚未就绪");
+        if (!rendered) throw new Error(t("GPU 导出引擎尚未就绪", "The GPU export engine is not ready"));
         const rgba = addTextWatermark(rendered, dimensions.width, dimensions.height, exportOptions.watermark);
         await writeExport({
           ...target,
@@ -670,7 +673,7 @@ export default function App() {
           format: exportOptions.format, quality: exportOptions.quality, rgba,
         });
       }
-      setExportProgress(`已完成 ${items.length} 张`);
+      setExportProgress(t(`已完成 ${items.length} 张`, `Completed ${items.length} photo(s)`));
       window.setTimeout(() => setExportProgress(""), 1600);
     } catch (error) {
       setStatus("error");
@@ -779,6 +782,11 @@ export default function App() {
   }, [workspaceTheme]);
 
   useEffect(() => {
+    try { localStorage.setItem(LOCALE_STORAGE_KEY, locale); } catch { /* language remains session-only */ }
+    document.documentElement.lang = locale === "en" ? "en" : "zh-CN";
+  }, [locale]);
+
+  useEffect(() => {
     try { localStorage.setItem(INSPECTOR_WIDTH_STORAGE_KEY, String(inspectorWidth)); } catch { /* width remains session-only */ }
   }, [inspectorWidth]);
 
@@ -798,7 +806,7 @@ export default function App() {
   }
 
   return (
-    <main className="app-shell" data-theme={workspaceTheme} aria-busy={workspaceBusy}
+    <I18nProvider locale={locale} setLocale={setLocale}><main className="app-shell" data-theme={workspaceTheme} aria-busy={workspaceBusy}
       style={{ "--inspector-width": `${inspectorWidth}px` } as CSSProperties}
       onPointerDownCapture={(event) => { if (isContinuousEditTarget(event.target)) beginEditTransaction("pointer"); }}
       onFocusCapture={(event) => { if (isRecipeTextInput(event.target)) beginEditTransaction("text"); }}
@@ -808,16 +816,16 @@ export default function App() {
           <span className="brand-mark" aria-hidden="true"><ApertureIcon /></span><span className="brand-name">LightRAW</span><span className="phase-tag">LOCAL STUDIO</span>
         </div>
         <div className="file-summary">
-          {photo ? <><strong>{photo.fileName}</strong><span>{photo.sourceWidth} × {photo.sourceHeight}</span></> : <span>非破坏性 RAW 工作区</span>}
+          {photo ? <><strong>{photo.fileName}</strong><span>{photo.sourceWidth} × {photo.sourceHeight}</span></> : <span>{t("非破坏性 RAW 工作区", "Non-destructive RAW workspace")}</span>}
         </div>
-        <div className="top-actions"><button className="history-button" type="button" aria-label="撤销" title="撤销 · ⌘/Ctrl+Z"
+        <div className="top-actions"><button className="history-button" type="button" aria-label={t("撤销", "Undo")} title={`${t("撤销", "Undo")} · ⌘/Ctrl+Z`}
           disabled={history.past.length === 0 || workspaceBusy} onClick={() => setHistory((current) => undoHistory(current))}>↶</button>
-          <button className="history-button" type="button" aria-label="重做" title="重做 · ⇧⌘/Ctrl+Z 或 Ctrl+Y"
+          <button className="history-button" type="button" aria-label={t("重做", "Redo")} title={`${t("重做", "Redo")} · ⇧⌘/Ctrl+Z / Ctrl+Y`}
             disabled={history.future.length === 0 || workspaceBusy} onClick={() => setHistory((current) => redoHistory(current))}>↷</button>
           <button className={`compare-button ${showBefore ? "active" : ""}`} type="button" disabled={!photo || workspaceBusy}
-            title="前后对比 \\" onClick={() => setShowBefore((current) => !current)}>{showBefore ? "原图" : "前后"}</button>
+            title={`${t("前后对比", "Before/after")} \\`} onClick={() => setShowBefore((current) => !current)}>{showBefore ? t("原图", "Before") : t("前后", "Before/after")}</button>
           <button className="open-button" type="button" onClick={openPhoto} disabled={workspaceBusy}>
-            <OpenIcon />{status === "loading" ? "正在导入" : "导入照片"}</button></div>
+            <OpenIcon />{status === "loading" ? t("正在导入", "Importing") : t("导入照片", "Import photos")}</button></div>
       </header>
 
       <WorkspaceNavigator collection={libraryCollection} total={library.length}
@@ -826,15 +834,15 @@ export default function App() {
         onCollection={(collection) => { setLibraryCollection(collection); setActiveTool("library"); }} />
 
       <section className={`editor-stage ${showFilmstrip ? "" : "without-filmstrip"}`}>
-        <section className={`viewport ${activeTool === "crop" ? "crop-active" : ""}`} aria-label="照片预览">
+        <section className={`viewport ${activeTool === "crop" ? "crop-active" : ""}`} aria-label={t("照片预览", "Photo preview")}>
           <canvas ref={canvasRef} />
           {activeTool === "library" && <LibraryGrid photos={visibleLibrary} activeId={activePhotoId} selectedIds={selectedPhotoIds}
             onOpen={(item) => void openLibraryPhoto(item)} onToggle={togglePhotoSelection} onRate={changeRating} />}
           {!photo && activeTool !== "library" && status !== "loading" && <EmptyState onOpen={openPhoto} />}
-          {status === "loading" && <div className="loading-state"><span className="spinner" /><strong>构建线性预览</strong><span>{message}</span></div>}
+          {status === "loading" && <div className="loading-state"><span className="spinner" /><strong>{t("构建线性预览", "Building linear preview")}</strong><span>{message}</span></div>}
           {status === "error" && (
-            <div className="error-toast" role="alert"><strong>操作失败</strong><span>{message}</span>
-              <button type="button" onClick={() => { setStatus(photo ? "ready" : "idle"); setMessage(""); }}>关闭</button></div>
+            <div className="error-toast" role="alert"><strong>{t("操作失败", "Action failed")}</strong><span>{message}</span>
+              <button type="button" onClick={() => { setStatus(photo ? "ready" : "idle"); setMessage(""); }}>{t("关闭", "Close")}</button></div>
           )}
           {photo && activeTool === "crop" && recipe.geometry.straighten === 0 && previewLayout && (
             <CropOverlay layout={previewLayout} geometry={recipe.geometry}
@@ -845,14 +853,14 @@ export default function App() {
             onUpdate={(mask) => selectedLayerId && changeMask(selectedLayerId, mask)} onSample={sampleSource} />}
           {photo && activeTool !== "library" && <div className="preview-status">
             <span>{photo.format}</span>{photo.camera && <span>{photo.camera}</span>}
-            <span className="live"><i />实时预览{metrics && ` · ${metrics.fps || "—"} FPS · ${metrics.frameLatencyMs.toFixed(1)} ms`}</span>
+            <span className="live"><i />{t("实时预览", "Live preview")}{metrics && ` · ${metrics.fps || "—"} FPS · ${metrics.frameLatencyMs.toFixed(1)} ms`}</span>
           </div>}
         </section>
         {showFilmstrip && <Filmstrip photos={visibleLibrary} activeId={activePhotoId} onOpen={(item) => void openLibraryPhoto(item)} />}
       </section>
 
-      <section className="right-dock" aria-label="编辑检查器">
-        <button className="inspector-resizer" type="button" aria-label="调整右侧面板宽度" onPointerDown={beginInspectorResize}
+      <section className="right-dock" aria-label={t("编辑检查器", "Editing inspector")}>
+        <button className="inspector-resizer" type="button" aria-label={t("调整右侧面板宽度", "Resize right panel")} onPointerDown={beginInspectorResize}
           onKeyDown={(event) => {
             if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
             event.preventDefault();
@@ -885,15 +893,15 @@ export default function App() {
             progress={exportProgress} onChange={setExportOptions} onCurrent={() => void exportCurrentPhoto()}
             onBatch={() => void exportSelectedPhotos()} />
         )}</div>
-        <aside className="tool-rail" aria-label="编辑工具">
-          <button className={`tool-button ${activeTool === "library" ? "active" : ""}`} type="button" title="图库 · G" disabled={workspaceBusy} onClick={() => setActiveTool("library")}><LibraryIcon /><span>图库</span></button>
+        <aside className="tool-rail" aria-label={t("编辑工具", "Editing tools")}>
+          <button className={`tool-button ${activeTool === "library" ? "active" : ""}`} type="button" title={`${t("图库", "Library")} · G`} disabled={workspaceBusy} onClick={() => setActiveTool("library")}><LibraryIcon /><span>{t("图库", "Library")}</span></button>
           <div className="tool-rule" />
-          <button className={`tool-button ${activeTool === "adjust" ? "active" : ""}`} type="button" title="调色 · D（兼容 E）" disabled={workspaceBusy} onClick={() => setActiveTool("adjust")}><AdjustIcon /><span>调色</span></button>
-          <button className={`tool-button ${activeTool === "crop" ? "active" : ""}`} type="button" title="裁剪 · R（兼容 C）" disabled={!photo || workspaceBusy} onClick={() => setActiveTool("crop")}><CropIcon /><span>裁剪</span></button>
-          <button className={`tool-button ${activeTool === "mask" ? "active" : ""}`} type="button" title="蒙版 · M" disabled={!photo || workspaceBusy} onClick={() => setActiveTool("mask")}><MaskIcon /><span>蒙版</span></button>
-          <button className={`tool-button ${activeTool === "preset" ? "active" : ""}`} type="button" title="预设 · P" disabled={workspaceBusy} onClick={() => setActiveTool("preset")}><PresetIcon /><span>预设</span></button>
+          <button className={`tool-button ${activeTool === "adjust" ? "active" : ""}`} type="button" title={`${t("调色", "Adjust")} · D`} disabled={workspaceBusy} onClick={() => setActiveTool("adjust")}><AdjustIcon /><span>{t("调色", "Adjust")}</span></button>
+          <button className={`tool-button ${activeTool === "crop" ? "active" : ""}`} type="button" title={`${t("裁剪", "Crop")} · R`} disabled={!photo || workspaceBusy} onClick={() => setActiveTool("crop")}><CropIcon /><span>{t("裁剪", "Crop")}</span></button>
+          <button className={`tool-button ${activeTool === "mask" ? "active" : ""}`} type="button" title={`${t("蒙版", "Mask")} · M`} disabled={!photo || workspaceBusy} onClick={() => setActiveTool("mask")}><MaskIcon /><span>{t("蒙版", "Mask")}</span></button>
+          <button className={`tool-button ${activeTool === "preset" ? "active" : ""}`} type="button" title={`${t("预设", "Presets")} · P`} disabled={workspaceBusy} onClick={() => setActiveTool("preset")}><PresetIcon /><span>{t("预设", "Presets")}</span></button>
           <button className={`tool-button ${activeTool === "export" ? "active" : ""}`} type="button" disabled={(!photo && selectedPhotoIds.size === 0) || workspaceBusy}
-            title="导出 · ⌘/Ctrl+Shift+E（兼容 X）" onClick={() => setActiveTool("export")}><ExportIcon /><span>导出</span></button>
+            title={`${t("导出", "Export")} · ⌘/Ctrl+Shift+E`} onClick={() => setActiveTool("export")}><ExportIcon /><span>{t("导出", "Export")}</span></button>
           <div className={`gpu-badge ${gpuStatus}`}><i />GPU</div>
         </aside>
       </section>
@@ -901,15 +909,16 @@ export default function App() {
         busy={!!fileOperationProgress} onRenameValue={setRenameValue} onRename={() => void confirmRename()}
         onRemoveCatalog={() => void removeSelectedFromCatalog()} onTrash={() => void moveSelectedToTrash()}
         onCancel={() => setManagementDialog(null)} />}
-    </main>
+    </main></I18nProvider>
   );
 }
 
 function EmptyState({ onOpen }: { onOpen: () => void }) {
+  const { t } = useI18n();
   return <div className="empty-state"><div className="empty-aperture"><ApertureIcon /></div>
-    <p className="eyebrow">LIGHTRAW · DEVELOP</p><h1>让照片回到光线本身</h1>
-    <p className="empty-copy">批量导入 JPEG、HEIF 或相机 RAW，建立图库并开始非破坏性实时调色。</p>
-    <button className="empty-open" type="button" onClick={onOpen}>导入照片</button>
+    <p className="eyebrow">LIGHTRAW · DEVELOP</p><h1>{t("让照片回到光线本身", "Bring photos back to the light")}</h1>
+    <p className="empty-copy">{t("批量导入 JPEG、HEIF 或相机 RAW，建立图库并开始非破坏性实时调色。", "Batch-import JPEG, HEIF, or camera RAW files to begin non-destructive real-time editing.")}</p>
+    <button className="empty-open" type="button" onClick={onOpen}>{t("导入照片", "Import photos")}</button>
     <p className="format-list">JPG · HEIC · CR3 · NEF · ARW · RAF · DNG</p></div>;
 }
 
@@ -943,6 +952,20 @@ function loadPresets(): DevelopPreset[] {
 
 function loadWorkspaceTheme(): WorkspaceTheme {
   try { return normalizeWorkspaceTheme(localStorage.getItem(THEME_STORAGE_KEY)); } catch { return "dark"; }
+}
+
+function loadLocale(): AppLocale {
+  try { return normalizeLocale(localStorage.getItem(LOCALE_STORAGE_KEY)); } catch { return "zh"; }
+}
+
+function localizedMaskName(type: MaskType, t: (zh: string, en: string) => string) {
+  return ({
+    linear: t("线性渐变", "Linear gradient"),
+    radial: t("径向渐变", "Radial gradient"),
+    brush: t("画笔", "Brush"),
+    pen: t("钢笔路径", "Pen path"),
+    chroma: t("色度范围", "Color range"),
+  } as const)[type];
 }
 
 function loadInspectorWidth(): number {

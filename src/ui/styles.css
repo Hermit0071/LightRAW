@@ -124,10 +124,13 @@ button { color: inherit; }
 .engine-status div { display: grid; gap: 2px; }
 .engine-status strong { color: var(--text-soft); font-size: 9px; font-weight: 550; }
 .engine-status small { color: var(--muted); font-size: 8px; }
-.theme-switcher { margin-top: auto; padding: 0 8px; }
-.theme-switcher > div { display: flex; gap: 5px; margin-top: 10px; }
-.theme-switcher button { width: 26px; height: 24px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 5px; background: var(--control); cursor: pointer; }
-.theme-switcher button.active { border-color: var(--accent); }
+.language-switcher, .theme-switcher { padding: 0 8px; }
+.language-switcher { margin-top: auto; }
+.language-switcher > span, .theme-switcher > span { color: var(--muted); font: 8px ui-monospace, SFMono-Regular, monospace; letter-spacing: .12em; text-transform: uppercase; }
+.language-switcher > div, .theme-switcher > div { display: flex; gap: 5px; margin-top: 10px; }
+.language-switcher button, .theme-switcher button { width: 26px; height: 24px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 5px; background: var(--control); cursor: pointer; }
+.language-switcher button.active, .theme-switcher button.active { border-color: var(--accent); color: var(--accent); }
+.theme-switcher { margin-top: 16px; }
 .theme-dot { width: 10px; height: 10px; border: 1px solid #777; border-radius: 50%; }
 .theme-dot.dark { background: #161715; }.theme-dot.grey { background: #4b4c49; }.theme-dot.light { background: #eeede8; }
 
