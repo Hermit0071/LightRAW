@@ -1,9 +1,9 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   addCurvePoint,
+  buildCurveBezierSegments,
   moveCurvePoint,
   removeCurvePoint,
-  sampleCurve,
   type CurveChannel,
   type CurvePoint,
   type ToneCurves,
@@ -24,9 +24,7 @@ export function ToneCurveEditor({ curves, disabled, onChange }: {
   const svgRef = useRef<SVGSVGElement>(null);
   const curve = curves[channel];
   const colour = channel === "master" ? "#e6e4dc" : channel;
-  const path = sampleCurve(curve, 121)
-    .map((point, index) => `${index === 0 ? "M" : "L"}${point.x * 240} ${(1 - point.y) * 150}`)
-    .join(" ");
+  const path = buildCurvePath(curve);
 
   function position(event: ReactPointerEvent<SVGSVGElement | SVGCircleElement>): CurvePoint {
     const bounds = svgRef.current!.getBoundingClientRect();
@@ -92,4 +90,13 @@ export function ToneCurveEditor({ curves, disabled, onChange }: {
       <p>点击添加 · 拖动调整 · 双击删除</p>
     </div>
   );
+}
+
+function buildCurvePath(curve: CurvePoint[]): string {
+  const first = curve[0];
+  if (!first) return "";
+  const point = ({ x, y }: CurvePoint) => `${x * 240} ${(1 - y) * 150}`;
+  return [`M${point(first)}`, ...buildCurveBezierSegments(curve).map((segment) => (
+    `C${point(segment.control1)} ${point(segment.control2)} ${point(segment.end)}`
+  ))].join(" ");
 }

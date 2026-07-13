@@ -1,7 +1,11 @@
 import type { DevelopRecipe } from "../editor/develop-recipe";
 import { HSL_CHANNELS } from "../editor/hsl";
 import { MAX_LAYERS } from "../editor/masks";
-import { buildCurveLut, type ToneCurves } from "../editor/tone-curve";
+import {
+  buildCurveLut,
+  CURVE_LUT_SIZE,
+  type ToneCurves,
+} from "../editor/tone-curve";
 import { halfToFloat } from "./histogram";
 import { MASK_TEXTURE_SIZE, layerRasterKey, rasterizeLayerMask } from "./mask-rasterizer";
 import { COLOR_ENGINE_CONSTANTS } from "./color-engine";
@@ -434,7 +438,7 @@ export class PreviewRenderer {
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, this.curveTexture);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, 256, 1, 0, gl.RGBA, gl.FLOAT, buildCurveLut(this.recipe.curves));
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, CURVE_LUT_SIZE, 1, 0, gl.RGBA, gl.FLOAT, buildCurveLut(this.recipe.curves));
   }
 
   private uploadLayers(force = false): void {
@@ -471,7 +475,7 @@ export class PreviewRenderer {
       }
       if (force || this.maskCurveLayers[layer] !== adjustmentLayer.curves) {
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.maskCurveTexture);
-        gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, 256, 1, 1, gl.RGBA, gl.FLOAT, buildCurveLut(adjustmentLayer.curves));
+        gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, CURVE_LUT_SIZE, 1, 1, gl.RGBA, gl.FLOAT, buildCurveLut(adjustmentLayer.curves));
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.maskTexture);
       }
     });
@@ -665,7 +669,7 @@ function createMaskCurveTexture(gl: WebGL2RenderingContext): WebGLTexture {
   gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA16F, 256, 1, MAX_LAYERS);
+  gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA16F, CURVE_LUT_SIZE, 1, MAX_LAYERS);
   return texture;
 }
 

@@ -6,10 +6,18 @@ export interface CurvePoint {
 export type CurveChannel = "master" | "red" | "green" | "blue";
 export type ToneCurves = Record<CurveChannel, CurvePoint[]>;
 
+export interface CurveBezierSegment {
+  start: CurvePoint;
+  control1: CurvePoint;
+  control2: CurvePoint;
+  end: CurvePoint;
+}
+
 const ENDPOINTS: CurvePoint[] = [{ x: 0, y: 0 }, { x: 1, y: 1 }];
 export const MIN_CURVE_POINT_GAP = 0.001;
 const REPLACE_DISTANCE = 0.012;
 export const MAX_CURVE_POINTS = 16;
+export const CURVE_LUT_SIZE = 8192;
 
 export function createDefaultToneCurves(): ToneCurves {
   return {
@@ -65,12 +73,17 @@ export function evaluateCurve(curve: CurvePoint[], input: number): number {
   return evaluatePreparedCurve(curve, monotoneTangents(curve), input);
 }
 
-export function sampleCurve(curve: CurvePoint[], sampleCount: number): CurvePoint[] {
-  const count = Math.max(2, Math.floor(sampleCount));
+export function buildCurveBezierSegments(curve: CurvePoint[]): CurveBezierSegment[] {
   const tangents = monotoneTangents(curve);
-  return Array.from({ length: count }, (_, index) => {
-    const x = index / (count - 1);
-    return { x, y: evaluatePreparedCurve(curve, tangents, x) };
+  return curve.slice(1).map((end, index) => {
+    const start = curve[index];
+    const width = end.x - start.x;
+    return {
+      start,
+      control1: { x: start.x + width / 3, y: start.y + tangents[index] * width / 3 },
+      control2: { x: end.x - width / 3, y: end.y - tangents[index + 1] * width / 3 },
+      end,
+    };
   });
 }
 
@@ -135,7 +148,8 @@ function endpointTangent(width: number, adjacentWidth: number, slope: number, ad
   return tangent;
 }
 
-export function buildCurveLut(curves: ToneCurves, size = 256): Float32Array {
+/** Dense LUT keeps GPU lookup constant-time while resolving the closest legal handles. */
+export function buildCurveLut(curves: ToneCurves, size = CURVE_LUT_SIZE): Float32Array {
   const data = new Float32Array(size * 4);
   const masterTangents = monotoneTangents(curves.master);
   const redTangents = monotoneTangents(curves.red);
