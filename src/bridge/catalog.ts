@@ -18,6 +18,10 @@ export async function saveCatalogThumbnail(id: string, contents: string): Promis
   await invoke("save_thumbnail", { id, contents });
 }
 
+export async function removeCatalogThumbnails(ids: string[]): Promise<void> {
+  await invoke("remove_thumbnails", { ids });
+}
+
 export function saveCatalogFile(contents: string): Promise<void> {
   return enqueueCatalogSave(async () => {
     await invoke("save_catalog", { contents });

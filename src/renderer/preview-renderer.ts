@@ -376,6 +376,15 @@ export class PreviewRenderer {
     this.scheduleRender();
   }
 
+  clearImage(): void {
+    this.imageWidth = 0;
+    this.imageHeight = 0;
+    this.sourcePixels = null;
+    this.lastLayout = null;
+    this.onLayout?.({ x: 0, y: 0, width: 0, height: 0 });
+    this.scheduleRender();
+  }
+
   setRecipe(recipe: DevelopRecipe): void {
     const curveChanged = recipe.curves !== this.recipe.curves;
     const layersChanged = recipe.layers !== this.recipe.layers;

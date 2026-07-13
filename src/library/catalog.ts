@@ -22,6 +22,11 @@ export interface LibraryPhoto extends LibraryPhotoMetadata {
   thumbnail: string | null;
 }
 
+export interface FileRelocation {
+  source: string;
+  destination: string;
+}
+
 export function createLibraryPhoto(
   metadata: LibraryPhotoMetadata,
   id: string = crypto.randomUUID(),
@@ -51,6 +56,31 @@ export function mergeImportedPhotos(current: LibraryPhoto[], imported: LibraryPh
     knownPaths.add(photo.path);
     return true;
   })];
+}
+
+export function removePhotos(photos: LibraryPhoto[], ids: ReadonlySet<string>): LibraryPhoto[] {
+  return photos.filter((photo) => !ids.has(photo.id));
+}
+
+export function applyFileRelocations(photos: LibraryPhoto[], relocations: FileRelocation[]): LibraryPhoto[] {
+  const destinations = new Map(relocations.map((item) => [item.source, item.destination]));
+  return photos.map((photo) => {
+    const destination = destinations.get(photo.path);
+    return destination ? { ...photo, path: destination, fileName: fileName(destination) } : photo;
+  });
+}
+
+export function duplicateRelocatedPhotos(
+  photos: LibraryPhoto[],
+  relocations: FileRelocation[],
+  createId: () => string = () => crypto.randomUUID(),
+  now: () => string = () => new Date().toISOString(),
+): LibraryPhoto[] {
+  const sources = new Map(photos.map((photo) => [photo.path, photo]));
+  return relocations.flatMap(({ source, destination }) => {
+    const photo = sources.get(source);
+    return photo ? [{ ...photo, id: createId(), path: destination, fileName: fileName(destination), importedAt: now(), recipe: structuredClone(photo.recipe) }] : [];
+  });
 }
 
 export function mergeActiveRecipe(
@@ -156,4 +186,8 @@ function text(value: unknown): value is string {
 
 function positiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+function fileName(path: string): string {
+  return path.split(/[/\\]/).at(-1) ?? path;
 }

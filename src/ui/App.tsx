@@ -4,10 +4,20 @@ import {
   loadCatalogBackupFile,
   loadCatalogFile,
   loadCatalogThumbnails,
+  removeCatalogThumbnails,
   saveCatalogFile,
   saveCatalogThumbnail,
 } from "../bridge/catalog";
 import { chooseExportDirectory, chooseExportPath, writeExport } from "../bridge/export";
+import {
+  chooseTargetDirectory,
+  copyPhotoFiles,
+  movePhotoFiles,
+  renamePhotoFiles,
+  revealPhoto,
+  trashPhotoFiles,
+  type FileOperationOutcome,
+} from "../bridge/file-management";
 import { chooseImagePaths, openImagePath, type OpenedPreview, type PreviewInfo } from "../bridge/images";
 import { choosePresetJson, savePresetJson } from "../bridge/presets";
 import { createDefaultDevelopRecipe, type DevelopRecipe } from "../editor/develop-recipe";
@@ -33,11 +43,14 @@ import { batchExportFileNames, calculateDecodeLongEdge, calculateExportDimension
 import { addTextWatermark } from "../export/raster";
 import {
   applyCatalogThumbnails,
+  applyFileRelocations,
   createLibraryPhoto,
+  duplicateRelocatedPhotos,
   mergeActiveRecipe,
   mergeImportedPhotos,
   parseCatalogCopies,
   ratePhoto,
+  removePhotos,
   sortPhotos,
   stringifyCatalog,
   type LibraryPhoto,
@@ -63,9 +76,11 @@ import { PresetPanel } from "./PresetPanel";
 import { ExportPanel, type ExportUiOptions } from "./ExportPanel";
 import { Filmstrip } from "./Filmstrip";
 import { LibraryGrid } from "./LibraryGrid";
+import { LibraryManagementDialog, type LibraryManagementDialogMode } from "./LibraryManagementDialog";
 import { LibraryPanel } from "./LibraryPanel";
 import { WorkspaceNavigator, type GpuStatus } from "./WorkspaceNavigator";
 import { resolveShortcut, type ShortcutTool } from "./shortcuts";
+import { buildRenameRequests } from "./file-management";
 import {
   clampInspectorWidth,
   filterLibraryPhotos,
@@ -87,6 +102,7 @@ export default function App() {
   const exportingRef = useRef(false);
   const importingRef = useRef(false);
   const closingRef = useRef(false);
+  const fileOperationRef = useRef(false);
   const [history, setHistory] = useState(() => createHistory(createDefaultDevelopRecipe()));
   const recipe = history.present;
   const recipeRef = useRef(recipe);
@@ -136,6 +152,9 @@ export default function App() {
   const [activePhotoId, setActivePhotoId] = useState<string | null>(null);
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<string[]>([]);
   const [librarySort, setLibrarySort] = useState<LibrarySort>("importedAt");
+  const [managementDialog, setManagementDialog] = useState<LibraryManagementDialogMode | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [fileOperationProgress, setFileOperationProgress] = useState("");
   const [libraryCollection, setLibraryCollection] = useState<LibraryCollection>("all");
   const [workspaceTheme, setWorkspaceTheme] = useState<WorkspaceTheme>(loadWorkspaceTheme);
   const [inspectorWidth, setInspectorWidth] = useState(loadInspectorWidth);
@@ -150,10 +169,11 @@ export default function App() {
   catalogLoadedRef.current = catalogLoaded;
   activePhotoIdRef.current = activePhotoId;
   const selectedPhotoIdSet = new Set(selectedPhotoIds);
-  const workspaceBusy = !catalogLoaded || status === "loading" || !!exportProgress;
+  const workspaceBusy = !catalogLoaded || status === "loading" || !!exportProgress || !!fileOperationProgress;
   const sortedLibrary = sortPhotos(library, librarySort);
   const visibleLibrary = filterLibraryPhotos(sortedLibrary, libraryCollection, selectedPhotoIdSet);
   const showFilmstrip = activeTool !== "library" && visibleLibrary.length > 0;
+  const selectedPhotos = library.filter((item) => selectedPhotoIdSet.has(item.id));
   const selectedLayer = recipe.layers.find((layer) => layer.id === selectedLayerId) ?? null;
   const selectedMask = selectedLayer?.mask.components.find((mask) => mask.id === selectedMaskId && mask.visible) ?? null;
 
@@ -245,9 +265,9 @@ export default function App() {
     const appWindow = getCurrentWindow();
     void appWindow.onCloseRequested(async (event) => {
       event.preventDefault();
-      if (exportingRef.current || importingRef.current) {
+      if (exportingRef.current || importingRef.current || fileOperationRef.current) {
         setStatus("error");
-        setMessage("请等待当前导入或导出完成后再关闭 LightRAW。");
+        setMessage("请等待当前导入、导出或文件操作完成后再关闭 LightRAW。");
         return;
       }
       closingRef.current = true;
@@ -435,6 +455,171 @@ export default function App() {
     setLibrary((current) => ratePhoto(current, id, rating));
   }
 
+  function openRenameDialog() {
+    if (selectedPhotos.length === 0) return;
+    setRenameValue(selectedPhotos.length === 1 ? selectedPhotos[0].fileName : "Photo");
+    setManagementDialog("rename");
+  }
+
+  function openDeleteDialog() {
+    if (selectedPhotos.length > 0) setManagementDialog("delete");
+  }
+
+  async function revealSelectedPhoto() {
+    if (selectedPhotos.length !== 1) return;
+    try { await revealPhoto(selectedPhotos[0].path); } catch (error) { showFileOperationError(error); }
+  }
+
+  async function confirmRename() {
+    let requests;
+    try { requests = buildRenameRequests(selectedPhotos, renameValue); } catch (error) { showFileOperationError(error); return; }
+    if (!beginFileOperation(`正在重命名 ${requests.length} 个文件…`)) return;
+    setManagementDialog(null);
+    try {
+      const outcomes = await renamePhotoFiles(requests);
+      applyRelocations(successfulRelocations(outcomes));
+      reportFileOutcomes("重命名", outcomes);
+    } catch (error) {
+      showFileOperationError(error);
+    } finally {
+      endFileOperation();
+    }
+  }
+
+  async function copySelectedPhotos() {
+    const targets = selectedPhotos;
+    if (targets.length === 0) return;
+    const directory = await chooseTargetDirectory();
+    if (!directory || !beginFileOperation(`正在复制 ${targets.length} 个文件…`)) return;
+    try {
+      const outcomes = await copyPhotoFiles(targets.map((item) => item.path), directory);
+      const relocations = successfulRelocations(outcomes);
+      const snapshot = mergeActiveRecipe(libraryRef.current, activePhotoIdRef.current, recipeRef.current);
+      const copies = duplicateRelocatedPhotos(snapshot, relocations);
+      await Promise.all(copies.flatMap((item) => item.thumbnail ? [saveCatalogThumbnail(item.id, item.thumbnail)] : []));
+      const next = mergeImportedPhotos(libraryRef.current, copies);
+      libraryRef.current = next;
+      setLibrary(next);
+      setSelectedPhotoIds(copies.map((item) => item.id));
+      reportFileOutcomes("复制", outcomes);
+    } catch (error) {
+      showFileOperationError(error);
+    } finally {
+      endFileOperation();
+    }
+  }
+
+  async function moveSelectedPhotos() {
+    const targets = selectedPhotos;
+    if (targets.length === 0) return;
+    const directory = await chooseTargetDirectory();
+    if (!directory || !beginFileOperation(`正在移动 ${targets.length} 个文件…`)) return;
+    try {
+      const outcomes = await movePhotoFiles(targets.map((item) => item.path), directory);
+      applyRelocations(successfulRelocations(outcomes));
+      reportFileOutcomes("移动", outcomes);
+    } catch (error) {
+      showFileOperationError(error);
+    } finally {
+      endFileOperation();
+    }
+  }
+
+  async function removeSelectedFromCatalog() {
+    const ids = new Set(selectedPhotos.map((item) => item.id));
+    if (ids.size === 0 || !beginFileOperation(`正在从图库移除 ${ids.size} 张照片…`)) return;
+    setManagementDialog(null);
+    try {
+      removeCatalogRecords(ids);
+      await removeCatalogThumbnails([...ids]);
+      setStatus(activePhotoIdRef.current ? "ready" : "idle");
+      setMessage("");
+    } catch (error) {
+      showFileOperationError(error);
+    } finally {
+      endFileOperation();
+    }
+  }
+
+  async function moveSelectedToTrash() {
+    const targets = selectedPhotos;
+    if (targets.length === 0 || !beginFileOperation(`正在移到系统废纸篓 / 回收站…`)) return;
+    setManagementDialog(null);
+    try {
+      const outcomes = await trashPhotoFiles(targets.map((item) => item.path));
+      const removedPaths = new Set(outcomes.filter((item) => !item.error).map((item) => item.source));
+      const ids = new Set(targets.filter((item) => removedPaths.has(item.path)).map((item) => item.id));
+      removeCatalogRecords(ids);
+      await removeCatalogThumbnails([...ids]);
+      reportFileOutcomes("移到废纸篓 / 回收站", outcomes);
+    } catch (error) {
+      showFileOperationError(error);
+    } finally {
+      endFileOperation();
+    }
+  }
+
+  function beginFileOperation(progress: string): boolean {
+    if (fileOperationRef.current) return false;
+    fileOperationRef.current = true;
+    setFileOperationProgress(progress);
+    return true;
+  }
+
+  function endFileOperation() {
+    fileOperationRef.current = false;
+    setFileOperationProgress("");
+  }
+
+  function applyRelocations(relocations: { source: string; destination: string }[]) {
+    if (relocations.length === 0) return;
+    const next = applyFileRelocations(libraryRef.current, relocations);
+    libraryRef.current = next;
+    setLibrary(next);
+    const destinations = new Map(relocations.map((item) => [item.source, item.destination]));
+    setPhoto((current) => {
+      if (!current) return current;
+      const destination = destinations.get(current.path);
+      return destination ? { ...current, path: destination, fileName: destination.split(/[/\\]/).at(-1) ?? current.fileName } : current;
+    });
+  }
+
+  function removeCatalogRecords(ids: ReadonlySet<string>) {
+    if (ids.size === 0) return;
+    const next = removePhotos(libraryRef.current, ids);
+    libraryRef.current = next;
+    setLibrary(next);
+    setSelectedPhotoIds((current) => current.filter((id) => !ids.has(id)));
+    if (activePhotoIdRef.current && ids.has(activePhotoIdRef.current)) {
+      activePhotoIdRef.current = null;
+      rendererRef.current?.clearImage();
+      setPhoto(null);
+      setSourcePixels(null);
+      setHistogram(null);
+      setActivePhotoId(null);
+      setSelectedLayerId(null);
+      setSelectedMaskId(null);
+      setHistory(createHistory(createDefaultDevelopRecipe()));
+      setActiveTool("library");
+    }
+  }
+
+  function reportFileOutcomes(label: string, outcomes: FileOperationOutcome[]) {
+    const failures = outcomes.filter((item) => item.error);
+    if (failures.length > 0) {
+      setStatus("error");
+      setMessage(`${label}完成 ${outcomes.length - failures.length} 个，失败 ${failures.length} 个。${failures[0].error}`);
+    } else {
+      setStatus(activePhotoIdRef.current ? "ready" : "idle");
+      setMessage("");
+    }
+  }
+
+  function showFileOperationError(error: unknown) {
+    setStatus("error");
+    setMessage(error instanceof Error ? error.message : String(error));
+  }
+
   async function exportCurrentPhoto() {
     const item = library.find((value) => value.id === activePhotoId);
     if (!item) return;
@@ -543,7 +728,7 @@ export default function App() {
       const shortcut = resolveShortcut(event);
       if (!shortcut) return;
       const command = event.metaKey || event.ctrlKey;
-      if (exportingRef.current || importingRef.current || !catalogLoadedRef.current) {
+      if (exportingRef.current || importingRef.current || fileOperationRef.current || !catalogLoadedRef.current) {
         if (shortcut.type === "import") event.preventDefault();
         return;
       }
@@ -560,6 +745,12 @@ export default function App() {
         setShowBefore((current) => !current);
       } else if (shortcut.type === "rating" && activePhotoId) {
         changeRating(activePhotoId, shortcut.value as PhotoRating);
+      } else if (shortcut.type === "delete" && activeTool === "library" && selectedPhotos.length > 0) {
+        event.preventDefault();
+        openDeleteDialog();
+      } else if (shortcut.type === "rename" && activeTool === "library" && selectedPhotos.length > 0) {
+        event.preventDefault();
+        openRenameDialog();
       } else if (shortcut.type === "tool" && (photo || ["library", "preset", "export"].includes(shortcut.tool))) {
         if (command) event.preventDefault();
         setActiveTool(shortcut.tool);
@@ -665,8 +856,10 @@ export default function App() {
           }} />
         <div className="inspector-content">{activeTool === "library" ? (
           <LibraryPanel count={visibleLibrary.length} selectedCount={selectedPhotoIds.length} sort={librarySort} busy={workspaceBusy}
+            progress={fileOperationProgress}
             onSort={setLibrarySort} onImport={openPhoto} onSelectAll={() => setSelectedPhotoIds(visibleLibrary.map((item) => item.id))}
-            onClear={() => setSelectedPhotoIds([])} />
+            onClear={() => setSelectedPhotoIds([])} onReveal={() => void revealSelectedPhoto()} onRename={openRenameDialog}
+            onCopy={() => void copySelectedPhotos()} onMove={() => void moveSelectedPhotos()} onDelete={openDeleteDialog} />
         ) : activeTool === "adjust" ? (
           <AdjustmentPanel recipe={recipe} histogram={histogram} disabled={!photo} onChange={setRecipe} onReset={resetCurrentPanel} />
         ) : activeTool === "crop" ? (
@@ -700,6 +893,10 @@ export default function App() {
           <div className={`gpu-badge ${gpuStatus}`}><i />GPU</div>
         </aside>
       </section>
+      {managementDialog && <LibraryManagementDialog mode={managementDialog} photos={selectedPhotos} renameValue={renameValue}
+        busy={!!fileOperationProgress} onRenameValue={setRenameValue} onRename={() => void confirmRename()}
+        onRemoveCatalog={() => void removeSelectedFromCatalog()} onTrash={() => void moveSelectedToTrash()}
+        onCancel={() => setManagementDialog(null)} />}
     </main>
   );
 }
@@ -773,4 +970,8 @@ function previewPixels(opened: OpenedPreview): Uint16Array {
 
 function isTauriRuntime(): boolean {
   return "__TAURI_INTERNALS__" in window;
+}
+
+function successfulRelocations(outcomes: FileOperationOutcome[]): { source: string; destination: string }[] {
+  return outcomes.flatMap((item) => !item.error && item.destination ? [{ source: item.source, destination: item.destination }] : []);
 }

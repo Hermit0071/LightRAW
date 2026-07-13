@@ -31,6 +31,12 @@ describe("application shortcuts", () => {
     expect(resolveShortcut(key("4"))).toEqual({ type: "rating", value: 4 });
   });
 
+  it("maps library file-management shortcuts on macOS and Windows", () => {
+    expect(resolveShortcut(key("Delete"))).toEqual({ type: "delete" });
+    expect(resolveShortcut(key("Backspace"))).toEqual({ type: "delete" });
+    expect(resolveShortcut(key("F2"))).toEqual({ type: "rename" });
+  });
+
   it("does not treat unrelated modified keys as application shortcuts", () => {
     expect(resolveShortcut(key("g", { altKey: true }))).toBeNull();
     expect(resolveShortcut(key("o", { ctrlKey: true, altKey: true }))).toBeNull();

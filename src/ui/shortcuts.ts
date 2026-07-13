@@ -1,7 +1,7 @@
 export type ShortcutTool = "library" | "adjust" | "crop" | "mask" | "preset" | "export";
 
 export type AppShortcut =
-  | { type: "import" | "undo" | "redo" | "compare" }
+  | { type: "import" | "undo" | "redo" | "compare" | "delete" | "rename" }
   | { type: "tool"; tool: ShortcutTool }
   | { type: "rating"; value: 0 | 1 | 2 | 3 | 4 | 5 };
 
@@ -22,6 +22,8 @@ export function resolveShortcut(event: ShortcutKey): AppShortcut | null {
   if (command && key === "y") return { type: "redo" };
   if (command && event.shiftKey && key === "e") return { type: "tool", tool: "export" };
   if (command) return null;
+  if (key === "delete" || key === "backspace") return { type: "delete" };
+  if (key === "f2") return { type: "rename" };
   if (event.key === "\\") return { type: "compare" };
   if (/^[0-5]$/.test(key)) return { type: "rating", value: Number(key) as 0 | 1 | 2 | 3 | 4 | 5 };
   const tool = ({

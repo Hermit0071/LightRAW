@@ -4,9 +4,12 @@ import {
   createLibraryPhoto,
   mergeActiveRecipe,
   mergeImportedPhotos,
+  applyFileRelocations,
+  duplicateRelocatedPhotos,
   parseCatalogCopies,
   parseCatalogJson,
   ratePhoto,
+  removePhotos,
   sortPhotos,
   stringifyCatalog,
 } from "./catalog";
@@ -67,5 +70,29 @@ describe("photo catalog", () => {
     const photos = [photo("/one.jpg", "2026-01-01T00:00:00Z")];
     expect(applyCatalogThumbnails(photos, { [photos[0].id]: "data:image/png;base64,AAAA" })[0].thumbnail)
       .toBe("data:image/png;base64,AAAA");
+  });
+
+  it("removes selected records without mutating the original catalog", () => {
+    const photos = [photo("/one.jpg", "2026-01-01T00:00:00Z"), photo("/two.jpg", "2026-01-02T00:00:00Z")];
+    expect(removePhotos(photos, new Set([photos[0].id])).map((item) => item.fileName)).toEqual(["two.jpg"]);
+    expect(photos).toHaveLength(2);
+  });
+
+  it("keeps edits and identity when files are renamed or moved", () => {
+    const original = photo("/source/one.jpg", "2026-01-01T00:00:00Z", 4);
+    original.recipe.basic.exposure = 1.25;
+    const moved = applyFileRelocations([original], [{ source: original.path, destination: "/target/renamed.jpg" }]);
+    expect(moved[0]).toMatchObject({ id: original.id, path: "/target/renamed.jpg", fileName: "renamed.jpg", rating: 4 });
+    expect(moved[0].recipe.basic.exposure).toBe(1.25);
+  });
+
+  it("creates independent catalog records for copied files", () => {
+    const original = photo("/source/one.jpg", "2026-01-01T00:00:00Z", 3);
+    original.recipe.basic.exposure = 2;
+    const copies = duplicateRelocatedPhotos([original], [{ source: original.path, destination: "/copies/one-2.jpg" }],
+      () => "copy-id", () => "2026-02-01T00:00:00Z");
+    expect(copies).toHaveLength(1);
+    expect(copies[0]).toMatchObject({ id: "copy-id", path: "/copies/one-2.jpg", fileName: "one-2.jpg", rating: 3 });
+    expect(copies[0].recipe).not.toBe(original.recipe);
   });
 });
