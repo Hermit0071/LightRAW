@@ -112,6 +112,27 @@ button { color: inherit; }
 .preview-status span { padding: 5px 7px; border: 1px solid #363731aa; border-radius: 5px; background: #151613cc; color: #92948a; font: 8px ui-monospace, SFMono-Regular, monospace; letter-spacing: .06em; backdrop-filter: blur(8px); }
 .preview-status .live { display: flex; align-items: center; gap: 5px; color: #b3bb92; }
 
+.library-view { position: absolute; inset: 0; z-index: 1; overflow: auto; padding: 30px 32px 50px; background: #10110e; }
+.library-heading { display: flex; align-items: end; justify-content: space-between; margin-bottom: 24px; }
+.library-heading p { margin: 0 0 6px; color: #d7ff45; font: 8px ui-monospace, SFMono-Regular, monospace; letter-spacing: .18em; }
+.library-heading h1 { margin: 0; color: #dddbd2; font: 430 27px Georgia, "Times New Roman", serif; }
+.library-heading > span { color: #55574f; font-size: 8px; }
+.photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 17px; }
+.photo-card { min-width: 0; overflow: hidden; border: 1px solid #292a26; border-radius: 8px; background: #171815; }
+.photo-card.active { border-color: #687234; box-shadow: 0 0 0 1px #68723455; }
+.photo-thumb { position: relative; display: block; width: 100%; aspect-ratio: 3 / 2; padding: 0; border: 0; overflow: hidden; background: #090a08; cursor: pointer; }
+.photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.photo-placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: #484a43; font: 9px ui-monospace, SFMono-Regular, monospace; letter-spacing: .14em; }
+.photo-thumb i { position: absolute; right: 8px; top: 8px; width: 20px; height: 20px; display: grid; place-items: center; border: 1px solid #77797088; border-radius: 50%; background: #11120faa; color: transparent; font: normal 10px ui-monospace, monospace; }
+.photo-thumb i.selected { border-color: #d7ff45; background: #d7ff45; color: #151613; }
+.photo-meta { display: grid; gap: 7px; padding: 10px 11px 11px; }
+.photo-meta > button { min-width: 0; display: grid; gap: 3px; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.photo-meta strong { overflow: hidden; color: #b8b7af; font-size: 9px; font-weight: 560; text-overflow: ellipsis; white-space: nowrap; }
+.photo-meta small { color: #55574f; font: 7px ui-monospace, SFMono-Regular, monospace; }
+.star-rating { display: flex; gap: 1px; }
+.star-rating button { padding: 0 2px; border: 0; background: transparent; color: #45473f; font-size: 11px; cursor: pointer; }
+.star-rating button.active { color: #d7ff45; }
+
 .adjustments-panel {
   grid-row: 2; min-height: 0; overflow-y: auto; border-left: 1px solid #292a26; background: #171815;
   scrollbar-width: thin; scrollbar-color: #3b3d35 transparent;
@@ -263,6 +284,17 @@ input[type="range"]::-webkit-slider-thumb { width: 10px; height: 10px; margin-to
 .preset-row button:disabled { opacity: .3; }
 .preset-import { padding: 18px; border-bottom: 1px solid #292a26; }
 .preset-import button { width: 100%; }
+.panel-primary { width: 100%; height: 34px; border: 0; border-radius: 6px; background: #e7e5dd; color: #151613; font-size: 10px; font-weight: 650; cursor: pointer; }
+.panel-primary:hover { background: #d7ff45; }
+.panel-primary:disabled { opacity: .35; cursor: default; }
+.panel-field { display: grid; grid-template-columns: 58px 1fr; align-items: center; gap: 8px; color: #777970; font-size: 9px; }
+.panel-field input, .panel-field select { min-width: 0; width: 100%; height: 30px; padding: 0 8px; border: 1px solid #33342f; border-radius: 5px; outline: 0; background: #1d1e1a; color: #c4c5bb; font-size: 9px; }
+.panel-button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.panel-button-row button, .export-actions > button:not(.panel-primary) { height: 30px; border: 1px solid #33342f; border-radius: 5px; background: #1d1e1a; color: #898b81; font-size: 9px; cursor: pointer; }
+.panel-button-row button:hover, .export-actions > button:not(.panel-primary):hover { border-color: #687234; color: #d7ff45; }
+.panel-button-row button:disabled, .export-actions button:disabled { opacity: .3; cursor: default; }
+.export-actions { display: grid; gap: 7px; padding: 18px; border-bottom: 1px solid #292a26; }
+.export-actions p { margin: 5px 0 0; color: #a7ad89; font: 8px ui-monospace, SFMono-Regular, monospace; text-align: center; }
 .mask-overlay { position: absolute; z-index: 2; overflow: visible; touch-action: none; cursor: crosshair; }
 .mask-overlay line, .mask-overlay .radial-path, .mask-overlay .pen-path {
   fill: #d7ff4514; stroke: #d7ff45; stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none;

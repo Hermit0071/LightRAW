@@ -9,6 +9,8 @@ typedef struct {
   size_t data_size;
   uint32_t width;
   uint32_t height;
+  uint32_t source_width;
+  uint32_t source_height;
   uint16_t colors;
   char camera[160];
   char error[256];
@@ -41,6 +43,13 @@ int lightraw_decode_raw(const char *path, uint32_t max_dimension,
            raw->idata.normalized_model[0] ? raw->idata.normalized_model : raw->idata.model);
 
   uint32_t longest = raw->sizes.width > raw->sizes.height ? raw->sizes.width : raw->sizes.height;
+  if (raw->sizes.flip == 5 || raw->sizes.flip == 6) {
+    output->source_width = raw->sizes.height;
+    output->source_height = raw->sizes.width;
+  } else {
+    output->source_width = raw->sizes.width;
+    output->source_height = raw->sizes.height;
+  }
   raw->params.half_size = max_dimension > 0 && longest > max_dimension * 2;
   raw->params.use_camera_wb = 1;
   raw->params.no_auto_bright = 1;

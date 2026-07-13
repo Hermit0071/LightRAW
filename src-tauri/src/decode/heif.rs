@@ -36,6 +36,8 @@ pub fn decode(path: &Path, max_dimension: u32) -> Result<DecodedPreview, DecodeE
     Ok(DecodedPreview {
         width: preview.width(),
         height: preview.height(),
+        source_width: width,
+        source_height: height,
         format: path
             .extension()
             .and_then(|value| value.to_str())

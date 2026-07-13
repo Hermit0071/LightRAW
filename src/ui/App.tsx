@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { chooseAndOpenImage, type PreviewInfo } from "../bridge/images";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import {
+  loadCatalogBackupFile,
+  loadCatalogFile,
+  loadCatalogThumbnails,
+  saveCatalogFile,
+  saveCatalogThumbnail,
+} from "../bridge/catalog";
+import { chooseExportDirectory, chooseExportPath, writeExport } from "../bridge/export";
+import { chooseImagePaths, openImagePath, type OpenedPreview, type PreviewInfo } from "../bridge/images";
 import { choosePresetJson, savePresetJson } from "../bridge/presets";
 import { createDefaultDevelopRecipe, type DevelopRecipe } from "../editor/develop-recipe";
 import { commitHistory, commitTransaction, createHistory, redoHistory, undoHistory } from "../editor/history";
@@ -20,6 +29,24 @@ import {
   type MaskType,
 } from "../editor/masks";
 import { applyPreset, createPreset, parsePresetJson, stringifyPreset, type DevelopPreset } from "../editor/presets";
+import { batchExportFileNames, calculateDecodeLongEdge, calculateExportDimensions } from "../export/export-options";
+import { addTextWatermark } from "../export/raster";
+import {
+  applyCatalogThumbnails,
+  createLibraryPhoto,
+  mergeActiveRecipe,
+  mergeImportedPhotos,
+  parseCatalogCopies,
+  ratePhoto,
+  sortPhotos,
+  stringifyCatalog,
+  type LibraryPhoto,
+  type LibrarySort,
+  type PhotoRating,
+} from "../library/catalog";
+import { stringifyCatalogAsync } from "../library/catalog-serializer";
+import { saveCatalogUnlessCancelled } from "../library/catalog-save";
+import { thumbnailDataUrl } from "../library/thumbnail";
 import { calculateHistogram, type HistogramData } from "../renderer/histogram";
 import { halfToFloat } from "../renderer/histogram";
 import {
@@ -33,8 +60,11 @@ import { CropPanel } from "./CropPanel";
 import { MaskOverlay } from "./MaskOverlay";
 import { MaskPanel, type BrushSettings } from "./MaskPanel";
 import { PresetPanel } from "./PresetPanel";
+import { ExportPanel, type ExportUiOptions } from "./ExportPanel";
+import { LibraryGrid } from "./LibraryGrid";
+import { LibraryPanel } from "./LibraryPanel";
 
-type ActiveTool = "adjust" | "crop" | "mask" | "preset";
+type ActiveTool = "library" | "adjust" | "crop" | "mask" | "preset" | "export";
 const FULL_CROP = { x: 0, y: 0, width: 1, height: 1 } as const;
 const PRESET_STORAGE_KEY = "lightraw.presets.v1";
 type EditTransactionKind = "pointer" | "text";
@@ -42,12 +72,16 @@ type EditTransactionKind = "pointer" | "text";
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<PreviewRenderer | null>(null);
+  const exportingRef = useRef(false);
+  const importingRef = useRef(false);
+  const closingRef = useRef(false);
   const [history, setHistory] = useState(() => createHistory(createDefaultDevelopRecipe()));
   const recipe = history.present;
   const recipeRef = useRef(recipe);
   const editTransaction = useRef<{ kind: EditTransactionKind; baseline: DevelopRecipe } | null>(null);
   recipeRef.current = recipe;
   const setRecipe = useCallback((next: DevelopRecipe | ((current: DevelopRecipe) => DevelopRecipe)) => {
+    if (exportingRef.current || importingRef.current) return;
     setHistory((current) => {
       const value = typeof next === "function" ? next(current.present) : next;
       if (Object.is(current.present, value)) return current;
@@ -84,6 +118,24 @@ export default function App() {
   const [brush, setBrush] = useState<BrushSettings>({ size: 0.08, feather: 0.65, flow: 0.8 });
   const [showBefore, setShowBefore] = useState(false);
   const [presets, setPresets] = useState<DevelopPreset[]>(loadPresets);
+  const [library, setLibrary] = useState<LibraryPhoto[]>([]);
+  const [catalogLoaded, setCatalogLoaded] = useState(false);
+  const [activePhotoId, setActivePhotoId] = useState<string | null>(null);
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState<string[]>([]);
+  const [librarySort, setLibrarySort] = useState<LibrarySort>("importedAt");
+  const [exportOptions, setExportOptions] = useState<ExportUiOptions>({
+    format: "jpeg", sizeMode: "percent", sizeValue: 100, quality: 90, watermark: "",
+  });
+  const [exportProgress, setExportProgress] = useState("");
+  const libraryRef = useRef(library);
+  const catalogLoadedRef = useRef(catalogLoaded);
+  const activePhotoIdRef = useRef(activePhotoId);
+  libraryRef.current = library;
+  catalogLoadedRef.current = catalogLoaded;
+  activePhotoIdRef.current = activePhotoId;
+  const selectedPhotoIdSet = new Set(selectedPhotoIds);
+  const workspaceBusy = !catalogLoaded || status === "loading" || !!exportProgress;
+  const sortedLibrary = sortPhotos(library, librarySort);
   const selectedLayer = recipe.layers.find((layer) => layer.id === selectedLayerId) ?? null;
   const selectedMask = selectedLayer?.mask.components.find((mask) => mask.id === selectedMaskId && mask.visible) ?? null;
 
@@ -122,37 +174,172 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [photo, recipe, sourcePixels]);
 
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      setCatalogLoaded(true);
+      return;
+    }
+    void Promise.all([loadCatalogFile(), loadCatalogBackupFile()]).then(async ([primary, backup]) => {
+      const result = parseCatalogCopies(primary, backup);
+      const externalThumbnails = await loadCatalogThumbnails(result.photos.map((photo) => photo.id));
+      const legacyThumbnails = result.photos.filter((photo) => photo.thumbnail && !externalThumbnails[photo.id]);
+      await Promise.all(legacyThumbnails.map((photo) => saveCatalogThumbnail(photo.id, photo.thumbnail!)));
+      const photos = applyCatalogThumbnails(result.photos, externalThumbnails);
+      setLibrary(photos);
+      if (photos.length > 0) setActiveTool("library");
+      if (result.recovered) {
+        setStatus("error");
+        setMessage("图库主文件无效，已从上一份有效备份恢复。");
+      }
+      setCatalogLoaded(true);
+    }).catch((error) => {
+      setStatus("error");
+      setMessage(error instanceof Error ? error.message : String(error));
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!catalogLoaded || !isTauriRuntime()) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      if (closingRef.current) return;
+      void saveCatalogUnlessCancelled(
+        () => stringifyCatalogAsync(library),
+        () => cancelled || closingRef.current,
+        saveCatalogFile,
+      ).catch((error) => {
+        setStatus("error");
+        setMessage(error instanceof Error ? error.message : String(error));
+      });
+    }, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [catalogLoaded, library]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let unlisten: (() => void) | undefined;
+    let mounted = true;
+    const appWindow = getCurrentWindow();
+    void appWindow.onCloseRequested(async (event) => {
+      event.preventDefault();
+      if (exportingRef.current || importingRef.current) {
+        setStatus("error");
+        setMessage("请等待当前导入或导出完成后再关闭 LightRAW。");
+        return;
+      }
+      closingRef.current = true;
+      try {
+        if (catalogLoadedRef.current) {
+          const snapshot = mergeActiveRecipe(libraryRef.current, activePhotoIdRef.current, recipeRef.current);
+          await saveCatalogFile(stringifyCatalog(snapshot));
+        }
+        await appWindow.destroy();
+      } catch (error) {
+        closingRef.current = false;
+        setStatus("error");
+        setMessage(error instanceof Error ? error.message : String(error));
+      }
+    }).then((dispose) => {
+      if (mounted) unlisten = dispose;
+      else dispose();
+    });
+    return () => {
+      mounted = false;
+      unlisten?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activePhotoId) return;
+    setLibrary((current) => current.map((item) => item.id === activePhotoId && item.recipe !== recipe ? { ...item, recipe } : item));
+  }, [activePhotoId, recipe]);
+
   async function openPhoto() {
+    if (exportingRef.current || importingRef.current || !catalogLoadedRef.current) return;
+    importingRef.current = true;
     settleEditTransaction();
-    setStatus("loading");
-    setMessage("正在解码高精度预览…");
     try {
-      const opened = await chooseAndOpenImage();
-      if (!opened) {
+      const paths = await chooseImagePaths(true);
+      if (paths.length === 0) {
         setStatus(photo ? "ready" : "idle");
         setMessage("");
         return;
       }
-      const neutral = createDefaultDevelopRecipe();
-      rendererRef.current?.setImage(opened.info.width, opened.info.height, opened.pixels);
-      setSourcePixels(new Uint16Array(
-        opened.pixels.buffer,
-        opened.pixels.byteOffset,
-        opened.pixels.byteLength / Uint16Array.BYTES_PER_ELEMENT,
-      ));
-      editTransaction.current = null;
-      setHistory(createHistory(neutral));
-      setPhoto(opened.info);
+      setStatus("loading");
+      setSelectedPhotoIds([]);
+      const known = new Set(library.map((item) => item.path));
+      const imported: LibraryPhoto[] = [];
+      const failures: string[] = [];
+      for (let index = 0; index < paths.length; index += 1) {
+        const path = paths[index];
+        if (known.has(path)) continue;
+        setMessage(`正在生成缩略图 ${index + 1} / ${paths.length}`);
+        try {
+          const opened = await openImagePath(path, 512);
+          const pixels = previewPixels(opened);
+          const item = createLibraryPhoto({
+            path: opened.info.path, fileName: opened.info.fileName,
+            sourceWidth: opened.info.sourceWidth, sourceHeight: opened.info.sourceHeight,
+            format: opened.info.format, camera: opened.info.camera,
+          });
+          item.thumbnail = thumbnailDataUrl(pixels, opened.info.width, opened.info.height);
+          await saveCatalogThumbnail(item.id, item.thumbnail);
+          imported.push(item);
+          known.add(path);
+          const nextLibrary = mergeImportedPhotos(libraryRef.current, [item]);
+          libraryRef.current = nextLibrary;
+          setLibrary(nextLibrary);
+          setSelectedPhotoIds((current) => [...current, item.id]);
+        } catch (error) {
+          failures.push(`${path}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+      setActiveTool("library");
+      if (failures.length > 0) {
+        setStatus("error");
+        setMessage(`已导入 ${imported.length} 张，${failures.length} 张失败。${failures[0]}`);
+      } else {
+        setStatus("ready");
+        setMessage("");
+      }
+    } catch (error) {
+      setStatus("error");
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      importingRef.current = false;
+    }
+  }
+
+  async function openLibraryPhoto(item: LibraryPhoto) {
+    if (exportingRef.current || importingRef.current || !catalogLoadedRef.current) return;
+    settleEditTransaction();
+    setStatus("loading");
+    setMessage("正在解码高精度预览…");
+    try {
+      const opened = await openImagePath(item.path);
+      showOpenedPreview(opened, item);
       setActiveTool("adjust");
-      setSelectedLayerId(null);
-      setSelectedMaskId(null);
-      setShowBefore(false);
       setStatus("ready");
       setMessage("");
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : String(error));
     }
+  }
+
+  function showOpenedPreview(opened: OpenedPreview, item: LibraryPhoto) {
+    rendererRef.current?.setImage(opened.info.width, opened.info.height, opened.pixels);
+    setSourcePixels(previewPixels(opened));
+    editTransaction.current = null;
+    setHistory(createHistory(item.recipe));
+    setPhoto(opened.info);
+    setActivePhotoId(item.id);
+    setSelectedLayerId(null);
+    setSelectedMaskId(null);
+    setShowBefore(false);
   }
 
   function createPhotoMask(type: MaskType) {
@@ -220,6 +407,87 @@ export default function App() {
     }
   }
 
+  function togglePhotoSelection(id: string) {
+    setSelectedPhotoIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+  }
+
+  function changeRating(id: string, rating: PhotoRating) {
+    setLibrary((current) => ratePhoto(current, id, rating));
+  }
+
+  async function exportCurrentPhoto() {
+    const item = library.find((value) => value.id === activePhotoId);
+    if (!item) return;
+    const path = await chooseExportPath(item.fileName, exportOptions.format);
+    if (!path) return;
+    await exportPhotos([{ ...item, recipe: recipeRef.current }], { path });
+  }
+
+  async function exportSelectedPhotos() {
+    const items = library.filter((item) => selectedPhotoIdSet.has(item.id))
+      .map((item) => item.id === activePhotoId ? { ...item, recipe: recipeRef.current } : item);
+    if (items.length === 0) return;
+    const directory = await chooseExportDirectory();
+    if (!directory) return;
+    await exportPhotos(items, { directory });
+  }
+
+  async function exportPhotos(items: LibraryPhoto[], target: { path?: string; directory?: string }) {
+    if (exportingRef.current) return;
+    exportingRef.current = true;
+    setExportProgress(`准备导出 0 / ${items.length}`);
+    const fileNames = target.directory
+      ? batchExportFileNames(items.map((item) => item.fileName), exportOptions.format)
+      : [];
+    try {
+      for (let index = 0; index < items.length; index += 1) {
+        const item = items[index];
+        setExportProgress(`正在渲染 ${index + 1} / ${items.length}`);
+        const dimensions = calculateExportDimensions(item.sourceWidth, item.sourceHeight, item.recipe.geometry, {
+          mode: exportOptions.sizeMode, value: exportOptions.sizeValue,
+        });
+        if (Math.max(dimensions.width, dimensions.height) > 16_384) throw new RangeError("导出边长不能超过 16384 像素");
+        const decodeEdge = calculateDecodeLongEdge(item.sourceWidth, item.sourceHeight, item.recipe.geometry, dimensions);
+        const opened = await openImagePath(item.path, decodeEdge);
+        rendererRef.current?.setRecipe(item.recipe);
+        rendererRef.current?.setImage(opened.info.width, opened.info.height, opened.pixels);
+        const rendered = rendererRef.current?.renderExport(dimensions.width, dimensions.height);
+        if (!rendered) throw new Error("GPU 导出引擎尚未就绪");
+        const rgba = addTextWatermark(rendered, dimensions.width, dimensions.height, exportOptions.watermark);
+        await writeExport({
+          ...target,
+          fileName: target.directory ? fileNames[index] : undefined,
+          width: dimensions.width, height: dimensions.height,
+          format: exportOptions.format, quality: exportOptions.quality, rgba,
+        });
+      }
+      setExportProgress(`已完成 ${items.length} 张`);
+      window.setTimeout(() => setExportProgress(""), 1600);
+    } catch (error) {
+      setStatus("error");
+      setMessage(error instanceof Error ? error.message : String(error));
+      setExportProgress("");
+    } finally {
+      await restoreActivePreview();
+      exportingRef.current = false;
+    }
+  }
+
+  async function restoreActivePreview() {
+    const item = library.find((value) => value.id === activePhotoId);
+    if (!item) return;
+    try {
+      const opened = await openImagePath(item.path);
+      rendererRef.current?.setRecipe(recipeRef.current);
+      rendererRef.current?.setImage(opened.info.width, opened.info.height, opened.pixels);
+      setSourcePixels(previewPixels(opened));
+      setPhoto(opened.info);
+    } catch (error) {
+      setStatus("error");
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   function replacePresets(next: DevelopPreset[]) {
     setPresets(next);
     localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(next));
@@ -253,6 +521,10 @@ export default function App() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const command = event.metaKey || event.ctrlKey;
+      if (exportingRef.current || importingRef.current || !catalogLoadedRef.current) {
+        if (command && event.key.toLowerCase() === "o") event.preventDefault();
+        return;
+      }
       if (command && event.key.toLowerCase() === "o") {
         event.preventDefault();
         void openPhoto();
@@ -269,6 +541,10 @@ export default function App() {
       } else if (event.key === "\\" && photo) {
         event.preventDefault();
         setShowBefore((current) => !current);
+      } else if (!command && activePhotoId && /^[0-5]$/.test(event.key)) {
+        changeRating(activePhotoId, Number(event.key) as PhotoRating);
+      } else if (!command && ["g", "x"].includes(event.key.toLowerCase())) {
+        setActiveTool(event.key.toLowerCase() === "g" ? "library" : "export");
       } else if (!command && photo && ["c", "m", "e", "p"].includes(event.key.toLowerCase())) {
         setActiveTool(({ c: "crop", m: "mask", e: "adjust", p: "preset" } as const)[event.key.toLowerCase() as "c" | "m" | "e" | "p"]);
       }
@@ -288,46 +564,54 @@ export default function App() {
   }, [endEditTransaction]);
 
   return (
-    <main className="app-shell"
+    <main className="app-shell" aria-busy={workspaceBusy}
       onPointerDownCapture={(event) => { if (isContinuousEditTarget(event.target)) beginEditTransaction("pointer"); }}
       onFocusCapture={(event) => { if (isRecipeTextInput(event.target)) beginEditTransaction("text"); }}
       onBlurCapture={(event) => { if (isRecipeTextInput(event.target)) endEditTransaction("text"); }}>
       <header className="topbar">
         <div className="brand" aria-label="LightRAW">
-          <span className="brand-mark">Lr</span><span className="brand-name">LightRAW</span><span className="phase-tag">PHASE 04</span>
+          <span className="brand-mark">Lr</span><span className="brand-name">LightRAW</span><span className="phase-tag">PHASE 05</span>
         </div>
         <div className="file-summary">
-          {photo ? <><strong>{photo.fileName}</strong><span>{photo.width} × {photo.height}</span></> : <span>非破坏性 RAW 工作区</span>}
+          {photo ? <><strong>{photo.fileName}</strong><span>{photo.sourceWidth} × {photo.sourceHeight}</span></> : <span>非破坏性 RAW 工作区</span>}
         </div>
         <div className="top-actions"><button className="history-button" type="button" aria-label="撤销" title="撤销 ⌘Z"
-          disabled={history.past.length === 0} onClick={() => setHistory((current) => undoHistory(current))}>↶</button>
+          disabled={history.past.length === 0 || workspaceBusy} onClick={() => setHistory((current) => undoHistory(current))}>↶</button>
           <button className="history-button" type="button" aria-label="重做" title="重做 ⇧⌘Z"
-            disabled={history.future.length === 0} onClick={() => setHistory((current) => redoHistory(current))}>↷</button>
-          <button className={`compare-button ${showBefore ? "active" : ""}`} type="button" disabled={!photo}
+            disabled={history.future.length === 0 || workspaceBusy} onClick={() => setHistory((current) => redoHistory(current))}>↷</button>
+          <button className={`compare-button ${showBefore ? "active" : ""}`} type="button" disabled={!photo || workspaceBusy}
             title="前后对比 \\" onClick={() => setShowBefore((current) => !current)}>{showBefore ? "原图" : "前后"}</button>
-          <button className="open-button" type="button" onClick={openPhoto} disabled={status === "loading"}>
-            <OpenIcon />{status === "loading" ? "正在打开" : "打开照片"}</button></div>
+          <button className="open-button" type="button" onClick={openPhoto} disabled={workspaceBusy}>
+            <OpenIcon />{status === "loading" ? "正在导入" : "导入照片"}</button></div>
       </header>
 
       <aside className="tool-rail" aria-label="编辑工具">
-        <button className={`tool-button ${activeTool === "adjust" ? "active" : ""}`} type="button" onClick={() => setActiveTool("adjust")}>
+        <button className={`tool-button ${activeTool === "library" ? "active" : ""}`} type="button" disabled={workspaceBusy} onClick={() => setActiveTool("library")}>
+          <LibraryIcon /><span>图库</span>
+        </button>
+        <div className="tool-rule" />
+        <button className={`tool-button ${activeTool === "adjust" ? "active" : ""}`} type="button" disabled={workspaceBusy} onClick={() => setActiveTool("adjust")}>
           <AdjustIcon /><span>调色</span>
         </button>
         <div className="tool-rule" />
-        <button className={`tool-button ${activeTool === "crop" ? "active" : ""}`} type="button" disabled={!photo} onClick={() => setActiveTool("crop")}>
+        <button className={`tool-button ${activeTool === "crop" ? "active" : ""}`} type="button" disabled={!photo || workspaceBusy} onClick={() => setActiveTool("crop")}>
           <CropIcon /><span>裁剪</span>
         </button>
-        <button className={`tool-button ${activeTool === "mask" ? "active" : ""}`} type="button" disabled={!photo} onClick={() => setActiveTool("mask")}><MaskIcon /><span>蒙版</span></button>
-        <button className={`tool-button ${activeTool === "preset" ? "active" : ""}`} type="button" onClick={() => setActiveTool("preset")}><PresetIcon /><span>预设</span></button>
+        <button className={`tool-button ${activeTool === "mask" ? "active" : ""}`} type="button" disabled={!photo || workspaceBusy} onClick={() => setActiveTool("mask")}><MaskIcon /><span>蒙版</span></button>
+        <button className={`tool-button ${activeTool === "preset" ? "active" : ""}`} type="button" disabled={workspaceBusy} onClick={() => setActiveTool("preset")}><PresetIcon /><span>预设</span></button>
+        <button className={`tool-button ${activeTool === "export" ? "active" : ""}`} type="button" disabled={(!photo && selectedPhotoIds.length === 0) || workspaceBusy}
+          onClick={() => setActiveTool("export")}><ExportIcon /><span>导出</span></button>
         <div className="gpu-badge"><i />GPU</div>
       </aside>
 
       <section className={`viewport ${activeTool === "crop" ? "crop-active" : ""}`} aria-label="照片预览">
         <canvas ref={canvasRef} />
-        {!photo && status !== "loading" && <EmptyState onOpen={openPhoto} />}
+        {activeTool === "library" && <LibraryGrid photos={sortedLibrary} activeId={activePhotoId} selectedIds={selectedPhotoIdSet}
+          onOpen={(item) => void openLibraryPhoto(item)} onToggle={togglePhotoSelection} onRate={changeRating} />}
+        {!photo && activeTool !== "library" && status !== "loading" && <EmptyState onOpen={openPhoto} />}
         {status === "loading" && <div className="loading-state"><span className="spinner" /><strong>构建线性预览</strong><span>{message}</span></div>}
         {status === "error" && (
-          <div className="error-toast" role="alert"><strong>无法打开照片</strong><span>{message}</span>
+          <div className="error-toast" role="alert"><strong>操作失败</strong><span>{message}</span>
             <button type="button" onClick={() => { setStatus(photo ? "ready" : "idle"); setMessage(""); }}>关闭</button></div>
         )}
         {photo && activeTool === "crop" && recipe.geometry.straighten === 0 && previewLayout && (
@@ -337,13 +621,17 @@ export default function App() {
         {photo && activeTool === "mask" && !showBefore && previewLayout && selectedMask && <MaskOverlay layout={previewLayout} mask={selectedMask} geometry={recipe.geometry}
           imageWidth={photo.width} imageHeight={photo.height} brush={brush}
           onUpdate={(mask) => selectedLayerId && changeMask(selectedLayerId, mask)} onSample={sampleSource} />}
-        {photo && <div className="preview-status">
+        {photo && activeTool !== "library" && <div className="preview-status">
           <span>{photo.format}</span>{photo.camera && <span>{photo.camera}</span>}
           <span className="live"><i />实时预览{metrics && ` · ${metrics.fps || "—"} FPS · ${metrics.frameLatencyMs.toFixed(1)} ms`}</span>
         </div>}
       </section>
 
-      {activeTool === "adjust" ? (
+      {activeTool === "library" ? (
+        <LibraryPanel count={library.length} selectedCount={selectedPhotoIds.length} sort={librarySort} busy={workspaceBusy}
+          onSort={setLibrarySort} onImport={openPhoto} onSelectAll={() => setSelectedPhotoIds(library.map((item) => item.id))}
+          onClear={() => setSelectedPhotoIds([])} />
+      ) : activeTool === "adjust" ? (
         <AdjustmentPanel recipe={recipe} histogram={histogram} disabled={!photo} onChange={setRecipe}
           onReset={resetCurrentPanel} />
       ) : activeTool === "crop" ? (
@@ -356,10 +644,14 @@ export default function App() {
           onSelectMask={(layerId, maskId) => { setSelectedLayerId(layerId); setSelectedMaskId(maskId); }}
           onUpdateLayer={changeLayer} onMoveLayer={reorderLayer} onUpdateMask={changeMask} onSetMaskVisibility={changeMaskVisibility}
           onDeleteLayer={deletePhotoLayer} onDeleteMask={deleteMask} onBrushChange={setBrush} />
-      ) : (
+      ) : activeTool === "preset" ? (
         <PresetPanel presets={presets} disabled={!photo} onSave={saveCurrentPreset}
           onApply={(preset) => setRecipe((current) => applyPreset(current, preset))} onImport={importPreset}
           onExport={exportPreset} onDelete={(id) => replacePresets(presets.filter((preset) => preset.id !== id))} />
+      ) : (
+        <ExportPanel options={exportOptions} disabled={!activePhotoId || !!exportProgress} selectedCount={selectedPhotoIds.length}
+          progress={exportProgress} onChange={setExportOptions} onCurrent={() => void exportCurrentPhoto()}
+          onBatch={() => void exportSelectedPhotos()} />
       )}
     </main>
   );
@@ -368,8 +660,8 @@ export default function App() {
 function EmptyState({ onOpen }: { onOpen: () => void }) {
   return <div className="empty-state"><div className="empty-aperture"><ApertureIcon /></div>
     <p className="eyebrow">LIGHTRAW · DEVELOP</p><h1>让照片回到光线本身</h1>
-    <p className="empty-copy">打开一张 JPEG、HEIF 或相机 RAW，开始进行非破坏性实时调色。</p>
-    <button className="empty-open" type="button" onClick={onOpen}>选择照片</button>
+    <p className="empty-copy">批量导入 JPEG、HEIF 或相机 RAW，建立图库并开始非破坏性实时调色。</p>
+    <button className="empty-open" type="button" onClick={onOpen}>导入照片</button>
     <p className="format-list">JPG · HEIC · CR3 · NEF · ARW · RAF · DNG</p></div>;
 }
 
@@ -378,6 +670,8 @@ function AdjustIcon() { return <svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M
 function CropIcon() { return <svg viewBox="0 0 24 24"><path d="M7 3v14h14M3 7h14v14"/></svg>; }
 function MaskIcon() { return <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z"/></svg>; }
 function PresetIcon() { return <svg viewBox="0 0 24 24"><path d="m12 3 2.4 5.2L20 9l-4 4 .9 5.7L12 16l-4.9 2.7L8 13 4 9l5.6-.8z"/></svg>; }
+function LibraryIcon() { return <svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/></svg>; }
+function ExportIcon() { return <svg viewBox="0 0 24 24"><path d="M12 15V3m0 0L8 7m4-4 4 4M5 12v8h14v-8"/></svg>; }
 function ApertureIcon() { return <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="26"/><path d="m18 11 15 21M53 18l-21 14M53 46H29M18 53l14-21M11 18l21 14M11 46l21-14"/></svg>; }
 
 function loadPresets(): DevelopPreset[] {
@@ -403,4 +697,12 @@ function isContinuousEditTarget(target: EventTarget | null): boolean {
 
 function isRecipeTextInput(target: EventTarget | null): boolean {
   return target instanceof HTMLInputElement && target.closest(".layer-name-field") !== null;
+}
+
+function previewPixels(opened: OpenedPreview): Uint16Array {
+  return new Uint16Array(opened.pixels.buffer, opened.pixels.byteOffset, opened.pixels.byteLength / Uint16Array.BYTES_PER_ELEMENT);
+}
+
+function isTauriRuntime(): boolean {
+  return "__TAURI_INTERNALS__" in window;
 }

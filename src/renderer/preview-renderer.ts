@@ -6,6 +6,7 @@ import { halfToFloat } from "./histogram";
 import { MASK_TEXTURE_SIZE, layerRasterKey, rasterizeLayerMask } from "./mask-rasterizer";
 import { COLOR_ENGINE_CONSTANTS } from "./color-engine";
 import { toPreviewUniforms } from "./uniforms";
+import { flipRgbaRows } from "../export/raster";
 
 const VERTEX_SHADER = `#version 300 es
 precision highp float;
@@ -384,6 +385,41 @@ export class PreviewRenderer {
     this.scheduleRender();
   }
 
+  renderExport(width: number, height: number): Uint8Array {
+    if (this.imageWidth === 0 || this.imageHeight === 0) throw new Error("没有可导出的照片");
+    const gl = this.gl;
+    const maximum = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+    if (width < 1 || height < 1 || width > maximum || height > maximum) {
+      throw new RangeError(`当前 GPU 最大导出边长为 ${maximum} 像素`);
+    }
+    const texture = createTexture(gl, gl.LINEAR);
+    const framebuffer = gl.createFramebuffer();
+    if (!framebuffer) {
+      gl.deleteTexture(texture);
+      throw new Error("无法创建 GPU 导出缓冲区");
+    }
+    try {
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error("GPU 导出缓冲区不完整");
+      gl.viewport(0, 0, width, height);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      this.drawImage(0, 0, width, height, null);
+      const pixels = new Uint8Array(width * height * 4);
+      gl.pixelStorei(gl.PACK_ALIGNMENT, 1);
+      gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      return flipRgbaRows(pixels, width, height);
+    } finally {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.deleteFramebuffer(framebuffer);
+      gl.deleteTexture(texture);
+      this.scheduleRender();
+    }
+  }
+
   destroy(): void {
     cancelAnimationFrame(this.frameRequest);
     this.resizeObserver.disconnect();
@@ -456,6 +492,7 @@ export class PreviewRenderer {
     const frameStartedAt = performance.now();
     const gl = this.gl;
     const canvas = gl.canvas as HTMLCanvasElement;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     const ratio = Math.min(window.devicePixelRatio || 1, 2);
     const width = Math.max(1, Math.round(canvas.clientWidth * ratio));
     const height = Math.max(1, Math.round(canvas.clientHeight * ratio));
@@ -492,6 +529,17 @@ export class PreviewRenderer {
       this.onLayout?.(layout);
     }
 
+    this.drawImage(viewportX, viewportY, drawWidth, drawHeight, this.maskOverlayLayerId);
+    gl.flush();
+    this.reportMetrics(frameStartedAt);
+  }
+
+  private drawImage(viewportX: number, viewportY: number, width: number, height: number, overlayLayerId: string | null): void {
+    const gl = this.gl;
+    gl.viewport(viewportX, viewportY, width, height);
+    const crop = this.recipe.geometry.crop;
+    const cropWidth = this.imageWidth * crop.width;
+    const cropHeight = this.imageHeight * crop.height;
     const uniforms = toPreviewUniforms(this.recipe.basic);
     const detail = this.recipe.detail;
     const geometry = this.recipe.geometry;
@@ -527,11 +575,9 @@ export class PreviewRenderer {
     setUniform1f(gl, this.program, "u_luminance_noise", detail.luminanceNoiseReduction / 100);
     setUniform1f(gl, this.program, "u_color_noise", detail.colorNoiseReduction / 100);
     const activeLayers = this.recipe.layers.filter((layer) => layer.visible).slice(0, MAX_LAYERS);
-    setUniform1i(gl, this.program, "u_mask_overlay_layer", activeLayers.findIndex((layer) => layer.id === this.maskOverlayLayerId));
+    setUniform1i(gl, this.program, "u_mask_overlay_layer", activeLayers.findIndex((layer) => layer.id === overlayLayerId));
     this.uploadMaskUniforms();
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    gl.flush();
-    this.reportMetrics(frameStartedAt);
   }
 
   private uploadMaskUniforms(): void {

@@ -26,6 +26,8 @@ pub enum DecodeError {
 pub struct DecodedPreview {
     pub width: u32,
     pub height: u32,
+    pub source_width: u32,
+    pub source_height: u32,
     pub format: String,
     pub camera: Option<String>,
     pub rgba_f16_le: Vec<u8>,
@@ -120,7 +122,7 @@ mod tests {
     fn decodes_a_raster_into_a_linear_half_float_preview() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("sample.png");
-        let image = ImageBuffer::from_fn(2, 1, |x, _| {
+        let image = ImageBuffer::from_fn(10, 5, |x, _| {
             if x == 0 {
                 Rgb([255_u8, 0, 0])
             } else {
@@ -129,9 +131,10 @@ mod tests {
         });
         image.save(&path).unwrap();
 
-        let preview = decode_preview(&path, 4096).unwrap();
+        let preview = decode_preview(&path, 2).unwrap();
 
         assert_eq!((preview.width, preview.height), (2, 1));
+        assert_eq!((preview.source_width, preview.source_height), (10, 5));
         assert_eq!(preview.format, "PNG");
         assert_eq!(
             preview.rgba_f16_le.len(),

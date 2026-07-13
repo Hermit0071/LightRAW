@@ -10,6 +10,8 @@ struct NativeRawPreview {
     data_size: usize,
     width: u32,
     height: u32,
+    source_width: u32,
+    source_height: u32,
     colors: u16,
     camera: [c_char; 160],
     error: [c_char; 256],
@@ -35,6 +37,8 @@ pub fn decode(path: &Path, max_dimension: u32) -> Result<DecodedPreview, DecodeE
         data_size: 0,
         width: 0,
         height: 0,
+        source_width: 0,
+        source_height: 0,
         colors: 0,
         camera: [0; 160],
         error: [0; 256],
@@ -60,6 +64,8 @@ pub fn decode(path: &Path, max_dimension: u32) -> Result<DecodedPreview, DecodeE
     Ok(DecodedPreview {
         width: preview.width(),
         height: preview.height(),
+        source_width: native.source_width,
+        source_height: native.source_height,
         format: path
             .extension()
             .and_then(|value| value.to_str())

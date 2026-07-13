@@ -19,6 +19,7 @@ pub fn decode(path: &Path, max_dimension: u32) -> Result<DecodedPreview, DecodeE
     } else {
         ImageReader::open(path)?.with_guessed_format()?.decode()?
     };
+    let (source_width, source_height) = source.dimensions();
     let preview = resize_to_fit(source, max_dimension.max(1))?;
     let (width, height) = preview.dimensions();
     let rgba_f16_le = half_float_bytes(preview, SourceTransfer::Srgb);
@@ -26,6 +27,8 @@ pub fn decode(path: &Path, max_dimension: u32) -> Result<DecodedPreview, DecodeE
     Ok(DecodedPreview {
         width,
         height,
+        source_width,
+        source_height,
         format: display_format(path),
         camera: None,
         rgba_f16_le,
