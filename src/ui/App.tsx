@@ -64,7 +64,7 @@ import { ExportPanel, type ExportUiOptions } from "./ExportPanel";
 import { Filmstrip } from "./Filmstrip";
 import { LibraryGrid } from "./LibraryGrid";
 import { LibraryPanel } from "./LibraryPanel";
-import { WorkspaceNavigator } from "./WorkspaceNavigator";
+import { WorkspaceNavigator, type GpuStatus } from "./WorkspaceNavigator";
 import { resolveShortcut, type ShortcutTool } from "./shortcuts";
 import {
   clampInspectorWidth,
@@ -123,6 +123,7 @@ export default function App() {
   const [activeTool, setActiveTool] = useState<ActiveTool>("adjust");
   const [previewLayout, setPreviewLayout] = useState<PreviewLayout | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [gpuStatus, setGpuStatus] = useState<GpuStatus>("checking");
   const [message, setMessage] = useState("");
   const [metrics, setMetrics] = useState<PreviewMetrics | null>(null);
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
@@ -160,7 +161,9 @@ export default function App() {
     if (!canvasRef.current) return;
     try {
       rendererRef.current = new PreviewRenderer(canvasRef.current, recipe, setMetrics, setPreviewLayout);
+      setGpuStatus("ready");
     } catch (error) {
+      setGpuStatus("error");
       setStatus("error");
       setMessage(error instanceof Error ? error.message : String(error));
     }
@@ -624,7 +627,7 @@ export default function App() {
 
       <WorkspaceNavigator collection={libraryCollection} total={library.length}
         rated={library.filter((item) => item.rating > 0).length} selected={selectedPhotoIds.length}
-        theme={workspaceTheme} onTheme={setWorkspaceTheme}
+        theme={workspaceTheme} gpuStatus={gpuStatus} onTheme={setWorkspaceTheme}
         onCollection={(collection) => { setLibraryCollection(collection); setActiveTool("library"); }} />
 
       <section className={`editor-stage ${showFilmstrip ? "" : "without-filmstrip"}`}>

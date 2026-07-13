@@ -10,14 +10,16 @@ describe("workspace controls", () => {
     const onTheme = vi.fn();
     let renderer: ReactTestRenderer;
     act(() => {
-      renderer = create(<WorkspaceNavigator collection="all" total={4} rated={2} selected={1} theme="dark"
+      renderer = create(<WorkspaceNavigator collection="all" total={4} rated={2} selected={1} theme="dark" gpuStatus="ready"
         onCollection={onCollection} onTheme={onTheme} />);
     });
-    const buttons = renderer!.root.findAllByType("button");
-    act(() => buttons[1].props.onClick());
-    act(() => buttons[4].props.onClick());
+    act(() => renderer!.root.findByProps({ "aria-label": "已评分" }).props.onClick());
+    act(() => renderer!.root.findByProps({ "aria-label": "grey 主题" }).props.onClick());
     expect(onCollection).toHaveBeenCalledWith("rated");
     expect(onTheme).toHaveBeenCalledWith("grey");
+    act(() => renderer!.update(<WorkspaceNavigator collection="all" total={4} rated={2} selected={1} theme="dark" gpuStatus="error"
+      onCollection={onCollection} onTheme={onTheme} />));
+    expect(JSON.stringify(renderer!.toJSON())).toContain("GPU 不可用");
   });
 
   it("opens the selected filmstrip photo", () => {
