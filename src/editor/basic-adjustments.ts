@@ -1,14 +1,20 @@
 export interface BasicAdjustments {
-  version: 1;
   temperature: number;
   tint: number;
   exposure: number;
   contrast: number;
   highlights: number;
   shadows: number;
+  whites: number;
+  blacks: number;
+  texture: number;
+  clarity: number;
+  dehaze: number;
+  vibrance: number;
+  saturation: number;
 }
 
-export type BasicAdjustmentName = Exclude<keyof BasicAdjustments, "version">;
+export type BasicAdjustmentName = keyof BasicAdjustments;
 
 export const BASIC_ADJUSTMENT_LIMITS: Record<
   BasicAdjustmentName,
@@ -20,17 +26,30 @@ export const BASIC_ADJUSTMENT_LIMITS: Record<
   contrast: [-100, 100],
   highlights: [-100, 100],
   shadows: [-100, 100],
+  whites: [-100, 100],
+  blacks: [-100, 100],
+  texture: [-100, 100],
+  clarity: [-100, 100],
+  dehaze: [-100, 100],
+  vibrance: [-100, 100],
+  saturation: [-100, 100],
 };
 
 export function createDefaultAdjustments(): BasicAdjustments {
   return {
-    version: 1,
     temperature: 0,
     tint: 0,
     exposure: 0,
     contrast: 0,
     highlights: 0,
     shadows: 0,
+    whites: 0,
+    blacks: 0,
+    texture: 0,
+    clarity: 0,
+    dehaze: 0,
+    vibrance: 0,
+    saturation: 0,
   };
 }
 

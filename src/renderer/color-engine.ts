@@ -1,4 +1,7 @@
 import type { BasicAdjustments } from "../editor/basic-adjustments";
+import type { DevelopRecipe } from "../editor/develop-recipe";
+import { adjustHslPixel } from "../editor/hsl";
+import { evaluateCurve } from "../editor/tone-curve";
 import { toPreviewUniforms } from "./uniforms";
 
 export type LinearRgb = readonly [number, number, number];
@@ -59,6 +62,10 @@ export function adjustLinearPixel(
   );
   value = adjustZone(value, uniforms.shadows, shadowMask, constants.zoneStrength);
   value = adjustZone(value, uniforms.highlights, highlightMask, constants.zoneStrength);
+  const blackMask = 1 - smoothstep(0.02, 0.32, value);
+  const whiteMask = smoothstep(0.48, 1, value);
+  value = adjustZone(value, uniforms.blacks, blackMask, 0.48);
+  value = adjustZone(value, uniforms.whites, whiteMask, 0.48);
   const toneScale = Math.max(value, 0) / before;
   const contrastSlope = 2 ** uniforms.contrast;
 
@@ -66,7 +73,48 @@ export function adjustLinearPixel(
     (channel * toneScale - constants.middleGray) * contrastSlope + constants.middleGray,
     0,
   );
-  return [applyContrast(color[0]), applyContrast(color[1]), applyContrast(color[2])];
+  const contrastedBeforeHaze: LinearRgb = [
+    applyContrast(color[0]),
+    applyContrast(color[1]),
+    applyContrast(color[2]),
+  ];
+  const hazePivot = 0.12;
+  const hazeSlope = 1 + uniforms.dehaze * 0.42;
+  const applyDehaze = (channel: number) => Math.max(
+    (channel - hazePivot) * hazeSlope + hazePivot - uniforms.dehaze * 0.025, 0,
+  );
+  const contrasted: LinearRgb = [
+    applyDehaze(contrastedBeforeHaze[0]),
+    applyDehaze(contrastedBeforeHaze[1]),
+    applyDehaze(contrastedBeforeHaze[2]),
+  ];
+  const lightness = luminance(contrasted);
+  const maximum = Math.max(...contrasted);
+  const minimum = Math.min(...contrasted);
+  const chroma = maximum - minimum;
+  const vibranceProtection = 1 - Math.min(chroma, 1);
+  const saturationScale = Math.max(
+    0,
+    1 + uniforms.saturation + uniforms.vibrance * vibranceProtection,
+  );
+  const applySaturation = (channel: number) => (
+    lightness + (channel - lightness) * saturationScale
+  );
+  return [
+    applySaturation(contrasted[0]),
+    applySaturation(contrasted[1]),
+    applySaturation(contrasted[2]),
+  ];
+}
+
+export function developLinearPixel(input: LinearRgb, recipe: DevelopRecipe): LinearRgb {
+  const basic = adjustLinearPixel(input, recipe.basic);
+  const hsl = adjustHslPixel(basic, recipe.hsl);
+  return [
+    evaluateCurve(recipe.curves.master, evaluateCurve(recipe.curves.red, hsl[0])),
+    evaluateCurve(recipe.curves.master, evaluateCurve(recipe.curves.green, hsl[1])),
+    evaluateCurve(recipe.curves.master, evaluateCurve(recipe.curves.blue, hsl[2])),
+  ];
 }
 
 function luminance(color: LinearRgb): number {
@@ -80,6 +128,6 @@ function smoothstep(start: number, end: number, value: number): number {
 
 function adjustZone(value: number, amount: number, mask: number, strength: number): number {
   return amount >= 0
-    ? value + (1 - value) * amount * mask * strength
+    ? value + Math.max(1 - value, 0) * amount * mask * strength
     : value + value * amount * mask * strength;
 }

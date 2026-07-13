@@ -7,6 +7,13 @@ export interface PreviewUniforms {
   contrast: number;
   highlights: number;
   shadows: number;
+  whites: number;
+  blacks: number;
+  texture: number;
+  clarity: number;
+  dehaze: number;
+  vibrance: number;
+  saturation: number;
 }
 
 export function toPreviewUniforms(adjustments: BasicAdjustments): PreviewUniforms {
@@ -17,5 +24,12 @@ export function toPreviewUniforms(adjustments: BasicAdjustments): PreviewUniform
     contrast: adjustments.contrast / 100,
     highlights: adjustments.highlights / 100,
     shadows: adjustments.shadows / 100,
+    whites: adjustments.whites / 100,
+    blacks: adjustments.blacks / 100,
+    texture: adjustments.texture / 100,
+    clarity: adjustments.clarity / 100,
+    dehaze: adjustments.dehaze / 100,
+    vibrance: adjustments.vibrance / 100,
+    saturation: adjustments.saturation / 100,
   };
 }

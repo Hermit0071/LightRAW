@@ -12,6 +12,13 @@ describe("preview renderer interface", () => {
       contrast: 40,
       highlights: -25,
       shadows: 75,
+      whites: 20,
+      blacks: -30,
+      texture: 10,
+      clarity: -20,
+      dehaze: 30,
+      vibrance: 40,
+      saturation: -50,
     });
 
     expect(uniforms).toEqual({
@@ -21,6 +28,13 @@ describe("preview renderer interface", () => {
       contrast: 0.4,
       highlights: -0.25,
       shadows: 0.75,
+      whites: 0.2,
+      blacks: -0.3,
+      texture: 0.1,
+      clarity: -0.2,
+      dehaze: 0.3,
+      vibrance: 0.4,
+      saturation: -0.5,
     });
   });
 });

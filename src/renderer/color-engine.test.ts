@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultAdjustments } from "../editor/basic-adjustments";
-import { adjustLinearPixel } from "./color-engine";
+import { adjustLinearPixel, developLinearPixel } from "./color-engine";
+import { createDefaultDevelopRecipe } from "../editor/develop-recipe";
 
 const neutral = createDefaultAdjustments();
 
@@ -44,5 +45,25 @@ describe("phase-one color engine", () => {
     const dark = adjustLinearPixel([0.1, 0.1, 0.1], { ...neutral, highlights: -50 });
     const bright = adjustLinearPixel([0.8, 0.8, 0.8], { ...neutral, highlights: -50 });
     expect(0.8 - bright[0]).toBeGreaterThan(0.1 - dark[0]);
+  });
+});
+
+describe("phase-two color engine", () => {
+  it("keeps a neutral recipe transparent", () => {
+    expect(developLinearPixel([0.15, 0.4, 0.75], createDefaultDevelopRecipe()))
+      .toEqual([0.15, 0.4, 0.75]);
+  });
+
+  it("targets whites more strongly than midtones", () => {
+    const bright = adjustLinearPixel([0.9, 0.9, 0.9], { ...neutral, whites: -60 });
+    const middle = adjustLinearPixel([0.3, 0.3, 0.3], { ...neutral, whites: -60 });
+    expect(0.9 - bright[0]).toBeGreaterThan(0.3 - middle[0]);
+  });
+
+  it("vibrance protects already saturated colours", () => {
+    const grey = adjustLinearPixel([0.4, 0.42, 0.4], { ...neutral, vibrance: 80 });
+    const vivid = adjustLinearPixel([0.8, 0.1, 0.1], { ...neutral, vibrance: 80 });
+    expect(grey[1] - grey[0]).toBeGreaterThan(0.02);
+    expect(vivid[0]).toBeLessThan(1.25);
   });
 });

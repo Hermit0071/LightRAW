@@ -1,13 +1,17 @@
 # LightRAW
 
-LightRAW 是一款面向 macOS 和 Windows 的轻量级、非破坏性 RAW 照片编辑器。当前仓库完成了阶段一：桌面骨架、主流图片/RAW 解码、16-bit 线性 GPU 预览，以及白平衡和基础影调调整。
+LightRAW 是一款面向 macOS 和 Windows 的轻量级、非破坏性 RAW 照片编辑器。当前仓库完成了阶段二：在主流图片/RAW 解码与 16-bit 线性 GPU 预览基础上，加入完整基础调色、HSL、曲线、细节和裁剪几何工具。
 
 ## 当前支持
 
 - JPEG、PNG、TIFF
 - HEIF、HEIC
 - Canon CR2/CR3、Nikon NEF/NRW、Sony ARW、Fujifilm RAF、Panasonic RW2、OM/Olympus ORF、DNG
-- 色温、色调、曝光、对比度、高光、阴影
+- 色温、色调、曝光、对比度、高光、阴影、白色色阶、黑色色阶
+- 纹理、清晰度、去雾、自然饱和度、饱和度
+- RGB 主曲线及红、绿、蓝分通道曲线
+- 8 色 HSL、实时编辑后直方图、锐化和基础降噪
+- 自由裁剪、常用比例、旋转、翻转和角度拉直
 - WebGL 2 实时预览
 
 RAW 兼容性最终取决于 LibRaw 对具体相机型号及记录格式的支持情况。
@@ -62,4 +66,4 @@ LIGHTRAW_REAL_IMAGE=/path/to/photo.ARW \
   -- --ignored --nocapture
 ```
 
-阶段一的详细边界与验收记录见 [docs/PHASE-1.md](docs/PHASE-1.md)。
+阶段一和阶段二的详细边界与验收记录见 [docs/PHASE-1.md](docs/PHASE-1.md) 与 [docs/PHASE-2.md](docs/PHASE-2.md)。
