@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   loadCatalogBackupFile,
@@ -61,13 +61,24 @@ import { MaskOverlay } from "./MaskOverlay";
 import { MaskPanel, type BrushSettings } from "./MaskPanel";
 import { PresetPanel } from "./PresetPanel";
 import { ExportPanel, type ExportUiOptions } from "./ExportPanel";
+import { Filmstrip } from "./Filmstrip";
 import { LibraryGrid } from "./LibraryGrid";
 import { LibraryPanel } from "./LibraryPanel";
+import { WorkspaceNavigator } from "./WorkspaceNavigator";
 import { resolveShortcut, type ShortcutTool } from "./shortcuts";
+import {
+  clampInspectorWidth,
+  filterLibraryPhotos,
+  normalizeWorkspaceTheme,
+  type LibraryCollection,
+  type WorkspaceTheme,
+} from "./workspace-layout";
 
 type ActiveTool = ShortcutTool;
 const FULL_CROP = { x: 0, y: 0, width: 1, height: 1 } as const;
 const PRESET_STORAGE_KEY = "lightraw.presets.v1";
+const THEME_STORAGE_KEY = "lightraw.workspace.theme";
+const INSPECTOR_WIDTH_STORAGE_KEY = "lightraw.workspace.inspector-width";
 type EditTransactionKind = "pointer" | "text";
 
 export default function App() {
@@ -124,6 +135,9 @@ export default function App() {
   const [activePhotoId, setActivePhotoId] = useState<string | null>(null);
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<string[]>([]);
   const [librarySort, setLibrarySort] = useState<LibrarySort>("importedAt");
+  const [libraryCollection, setLibraryCollection] = useState<LibraryCollection>("all");
+  const [workspaceTheme, setWorkspaceTheme] = useState<WorkspaceTheme>(loadWorkspaceTheme);
+  const [inspectorWidth, setInspectorWidth] = useState(loadInspectorWidth);
   const [exportOptions, setExportOptions] = useState<ExportUiOptions>({
     format: "jpeg", sizeMode: "percent", sizeValue: 100, quality: 90, watermark: "",
   });
@@ -137,6 +151,8 @@ export default function App() {
   const selectedPhotoIdSet = new Set(selectedPhotoIds);
   const workspaceBusy = !catalogLoaded || status === "loading" || !!exportProgress;
   const sortedLibrary = sortPhotos(library, librarySort);
+  const visibleLibrary = filterLibraryPhotos(sortedLibrary, libraryCollection, selectedPhotoIdSet);
+  const showFilmstrip = activeTool !== "library" && visibleLibrary.length > 0;
   const selectedLayer = recipe.layers.find((layer) => layer.id === selectedLayerId) ?? null;
   const selectedMask = selectedLayer?.mask.components.find((mask) => mask.id === selectedMaskId && mask.visible) ?? null;
 
@@ -560,14 +576,38 @@ export default function App() {
     };
   }, [endEditTransaction]);
 
+  useEffect(() => {
+    try { localStorage.setItem(THEME_STORAGE_KEY, workspaceTheme); } catch { /* theme remains session-only */ }
+  }, [workspaceTheme]);
+
+  useEffect(() => {
+    try { localStorage.setItem(INSPECTOR_WIDTH_STORAGE_KEY, String(inspectorWidth)); } catch { /* width remains session-only */ }
+  }, [inspectorWidth]);
+
+  function beginInspectorResize(event: ReactPointerEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = inspectorWidth;
+    const move = (pointerEvent: PointerEvent) => setInspectorWidth(clampInspectorWidth(startWidth + startX - pointerEvent.clientX));
+    const end = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+  }
+
   return (
-    <main className="app-shell" aria-busy={workspaceBusy}
+    <main className="app-shell" data-theme={workspaceTheme} aria-busy={workspaceBusy}
+      style={{ "--inspector-width": `${inspectorWidth}px` } as CSSProperties}
       onPointerDownCapture={(event) => { if (isContinuousEditTarget(event.target)) beginEditTransaction("pointer"); }}
       onFocusCapture={(event) => { if (isRecipeTextInput(event.target)) beginEditTransaction("text"); }}
       onBlurCapture={(event) => { if (isRecipeTextInput(event.target)) endEditTransaction("text"); }}>
       <header className="topbar">
         <div className="brand" aria-label="LightRAW">
-          <span className="brand-mark" aria-hidden="true"><ApertureIcon /></span><span className="brand-name">LightRAW</span><span className="phase-tag">PHASE 05</span>
+          <span className="brand-mark" aria-hidden="true"><ApertureIcon /></span><span className="brand-name">LightRAW</span><span className="phase-tag">LOCAL STUDIO</span>
         </div>
         <div className="file-summary">
           {photo ? <><strong>{photo.fileName}</strong><span>{photo.sourceWidth} × {photo.sourceHeight}</span></> : <span>非破坏性 RAW 工作区</span>}
@@ -582,74 +622,81 @@ export default function App() {
             <OpenIcon />{status === "loading" ? "正在导入" : "导入照片"}</button></div>
       </header>
 
-      <aside className="tool-rail" aria-label="编辑工具">
-        <button className={`tool-button ${activeTool === "library" ? "active" : ""}`} type="button" title="图库 · G" disabled={workspaceBusy} onClick={() => setActiveTool("library")}>
-          <LibraryIcon /><span>图库</span>
-        </button>
-        <div className="tool-rule" />
-        <button className={`tool-button ${activeTool === "adjust" ? "active" : ""}`} type="button" title="调色 · D（兼容 E）" disabled={workspaceBusy} onClick={() => setActiveTool("adjust")}>
-          <AdjustIcon /><span>调色</span>
-        </button>
-        <div className="tool-rule" />
-        <button className={`tool-button ${activeTool === "crop" ? "active" : ""}`} type="button" title="裁剪 · R（兼容 C）" disabled={!photo || workspaceBusy} onClick={() => setActiveTool("crop")}>
-          <CropIcon /><span>裁剪</span>
-        </button>
-        <button className={`tool-button ${activeTool === "mask" ? "active" : ""}`} type="button" title="蒙版 · M" disabled={!photo || workspaceBusy} onClick={() => setActiveTool("mask")}><MaskIcon /><span>蒙版</span></button>
-        <button className={`tool-button ${activeTool === "preset" ? "active" : ""}`} type="button" title="预设 · P" disabled={workspaceBusy} onClick={() => setActiveTool("preset")}><PresetIcon /><span>预设</span></button>
-        <button className={`tool-button ${activeTool === "export" ? "active" : ""}`} type="button" disabled={(!photo && selectedPhotoIds.length === 0) || workspaceBusy}
-          title="导出 · ⌘/Ctrl+Shift+E（兼容 X）" onClick={() => setActiveTool("export")}><ExportIcon /><span>导出</span></button>
-        <div className="gpu-badge"><i />GPU</div>
-      </aside>
+      <WorkspaceNavigator collection={libraryCollection} total={library.length}
+        rated={library.filter((item) => item.rating > 0).length} selected={selectedPhotoIds.length}
+        theme={workspaceTheme} onTheme={setWorkspaceTheme}
+        onCollection={(collection) => { setLibraryCollection(collection); setActiveTool("library"); }} />
 
-      <section className={`viewport ${activeTool === "crop" ? "crop-active" : ""}`} aria-label="照片预览">
-        <canvas ref={canvasRef} />
-        {activeTool === "library" && <LibraryGrid photos={sortedLibrary} activeId={activePhotoId} selectedIds={selectedPhotoIdSet}
-          onOpen={(item) => void openLibraryPhoto(item)} onToggle={togglePhotoSelection} onRate={changeRating} />}
-        {!photo && activeTool !== "library" && status !== "loading" && <EmptyState onOpen={openPhoto} />}
-        {status === "loading" && <div className="loading-state"><span className="spinner" /><strong>构建线性预览</strong><span>{message}</span></div>}
-        {status === "error" && (
-          <div className="error-toast" role="alert"><strong>操作失败</strong><span>{message}</span>
-            <button type="button" onClick={() => { setStatus(photo ? "ready" : "idle"); setMessage(""); }}>关闭</button></div>
-        )}
-        {photo && activeTool === "crop" && recipe.geometry.straighten === 0 && previewLayout && (
-          <CropOverlay layout={previewLayout} geometry={recipe.geometry}
-            onChange={(crop) => setRecipe((current) => ({ ...current, geometry: { ...current.geometry, crop, aspect: "free" } }))} />
-        )}
-        {photo && activeTool === "mask" && !showBefore && previewLayout && selectedMask && <MaskOverlay layout={previewLayout} mask={selectedMask} geometry={recipe.geometry}
-          imageWidth={photo.width} imageHeight={photo.height} brush={brush}
-          onUpdate={(mask) => selectedLayerId && changeMask(selectedLayerId, mask)} onSample={sampleSource} />}
-        {photo && activeTool !== "library" && <div className="preview-status">
-          <span>{photo.format}</span>{photo.camera && <span>{photo.camera}</span>}
-          <span className="live"><i />实时预览{metrics && ` · ${metrics.fps || "—"} FPS · ${metrics.frameLatencyMs.toFixed(1)} ms`}</span>
-        </div>}
+      <section className={`editor-stage ${showFilmstrip ? "" : "without-filmstrip"}`}>
+        <section className={`viewport ${activeTool === "crop" ? "crop-active" : ""}`} aria-label="照片预览">
+          <canvas ref={canvasRef} />
+          {activeTool === "library" && <LibraryGrid photos={visibleLibrary} activeId={activePhotoId} selectedIds={selectedPhotoIdSet}
+            onOpen={(item) => void openLibraryPhoto(item)} onToggle={togglePhotoSelection} onRate={changeRating} />}
+          {!photo && activeTool !== "library" && status !== "loading" && <EmptyState onOpen={openPhoto} />}
+          {status === "loading" && <div className="loading-state"><span className="spinner" /><strong>构建线性预览</strong><span>{message}</span></div>}
+          {status === "error" && (
+            <div className="error-toast" role="alert"><strong>操作失败</strong><span>{message}</span>
+              <button type="button" onClick={() => { setStatus(photo ? "ready" : "idle"); setMessage(""); }}>关闭</button></div>
+          )}
+          {photo && activeTool === "crop" && recipe.geometry.straighten === 0 && previewLayout && (
+            <CropOverlay layout={previewLayout} geometry={recipe.geometry}
+              onChange={(crop) => setRecipe((current) => ({ ...current, geometry: { ...current.geometry, crop, aspect: "free" } }))} />
+          )}
+          {photo && activeTool === "mask" && !showBefore && previewLayout && selectedMask && <MaskOverlay layout={previewLayout} mask={selectedMask} geometry={recipe.geometry}
+            imageWidth={photo.width} imageHeight={photo.height} brush={brush}
+            onUpdate={(mask) => selectedLayerId && changeMask(selectedLayerId, mask)} onSample={sampleSource} />}
+          {photo && activeTool !== "library" && <div className="preview-status">
+            <span>{photo.format}</span>{photo.camera && <span>{photo.camera}</span>}
+            <span className="live"><i />实时预览{metrics && ` · ${metrics.fps || "—"} FPS · ${metrics.frameLatencyMs.toFixed(1)} ms`}</span>
+          </div>}
+        </section>
+        {showFilmstrip && <Filmstrip photos={visibleLibrary} activeId={activePhotoId} onOpen={(item) => void openLibraryPhoto(item)} />}
       </section>
 
-      {activeTool === "library" ? (
-        <LibraryPanel count={library.length} selectedCount={selectedPhotoIds.length} sort={librarySort} busy={workspaceBusy}
-          onSort={setLibrarySort} onImport={openPhoto} onSelectAll={() => setSelectedPhotoIds(library.map((item) => item.id))}
-          onClear={() => setSelectedPhotoIds([])} />
-      ) : activeTool === "adjust" ? (
-        <AdjustmentPanel recipe={recipe} histogram={histogram} disabled={!photo} onChange={setRecipe}
-          onReset={resetCurrentPanel} />
-      ) : activeTool === "crop" ? (
-        <CropPanel recipe={recipe} imageAspect={photo ? photo.width / photo.height : 1} disabled={!photo}
-          freeCropEnabled={recipe.geometry.straighten === 0} onChange={setRecipe} />
-      ) : activeTool === "mask" ? (
-        <MaskPanel recipe={recipe} selectedLayerId={selectedLayerId} selectedMaskId={selectedMaskId} brush={brush} disabled={!photo}
-          imageAspect={photo ? photo.width / photo.height : 1} sampleSource={sampleSource}
-          onCreate={createPhotoMask} onAdd={addSelection} onSelectLayer={(id) => { setSelectedLayerId(id); setSelectedMaskId(null); }}
-          onSelectMask={(layerId, maskId) => { setSelectedLayerId(layerId); setSelectedMaskId(maskId); }}
-          onUpdateLayer={changeLayer} onMoveLayer={reorderLayer} onUpdateMask={changeMask} onSetMaskVisibility={changeMaskVisibility}
-          onDeleteLayer={deletePhotoLayer} onDeleteMask={deleteMask} onBrushChange={setBrush} />
-      ) : activeTool === "preset" ? (
-        <PresetPanel presets={presets} disabled={!photo} onSave={saveCurrentPreset}
-          onApply={(preset) => setRecipe((current) => applyPreset(current, preset))} onImport={importPreset}
-          onExport={exportPreset} onDelete={(id) => replacePresets(presets.filter((preset) => preset.id !== id))} />
-      ) : (
-        <ExportPanel options={exportOptions} disabled={!activePhotoId || !!exportProgress} selectedCount={selectedPhotoIds.length}
-          progress={exportProgress} onChange={setExportOptions} onCurrent={() => void exportCurrentPhoto()}
-          onBatch={() => void exportSelectedPhotos()} />
-      )}
+      <section className="right-dock" aria-label="编辑检查器">
+        <button className="inspector-resizer" type="button" aria-label="调整右侧面板宽度" onPointerDown={beginInspectorResize}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+            event.preventDefault();
+            setInspectorWidth((width) => clampInspectorWidth(width + (event.key === "ArrowLeft" ? 12 : -12)));
+          }} />
+        <div className="inspector-content">{activeTool === "library" ? (
+          <LibraryPanel count={visibleLibrary.length} selectedCount={selectedPhotoIds.length} sort={librarySort} busy={workspaceBusy}
+            onSort={setLibrarySort} onImport={openPhoto} onSelectAll={() => setSelectedPhotoIds(visibleLibrary.map((item) => item.id))}
+            onClear={() => setSelectedPhotoIds([])} />
+        ) : activeTool === "adjust" ? (
+          <AdjustmentPanel recipe={recipe} histogram={histogram} disabled={!photo} onChange={setRecipe} onReset={resetCurrentPanel} />
+        ) : activeTool === "crop" ? (
+          <CropPanel recipe={recipe} imageAspect={photo ? photo.width / photo.height : 1} disabled={!photo}
+            freeCropEnabled={recipe.geometry.straighten === 0} onChange={setRecipe} />
+        ) : activeTool === "mask" ? (
+          <MaskPanel recipe={recipe} selectedLayerId={selectedLayerId} selectedMaskId={selectedMaskId} brush={brush} disabled={!photo}
+            imageAspect={photo ? photo.width / photo.height : 1} sampleSource={sampleSource}
+            onCreate={createPhotoMask} onAdd={addSelection} onSelectLayer={(id) => { setSelectedLayerId(id); setSelectedMaskId(null); }}
+            onSelectMask={(layerId, maskId) => { setSelectedLayerId(layerId); setSelectedMaskId(maskId); }}
+            onUpdateLayer={changeLayer} onMoveLayer={reorderLayer} onUpdateMask={changeMask} onSetMaskVisibility={changeMaskVisibility}
+            onDeleteLayer={deletePhotoLayer} onDeleteMask={deleteMask} onBrushChange={setBrush} />
+        ) : activeTool === "preset" ? (
+          <PresetPanel presets={presets} disabled={!photo} onSave={saveCurrentPreset}
+            onApply={(preset) => setRecipe((current) => applyPreset(current, preset))} onImport={importPreset}
+            onExport={exportPreset} onDelete={(id) => replacePresets(presets.filter((preset) => preset.id !== id))} />
+        ) : (
+          <ExportPanel options={exportOptions} disabled={!activePhotoId || !!exportProgress} selectedCount={selectedPhotoIds.length}
+            progress={exportProgress} onChange={setExportOptions} onCurrent={() => void exportCurrentPhoto()}
+            onBatch={() => void exportSelectedPhotos()} />
+        )}</div>
+        <aside className="tool-rail" aria-label="编辑工具">
+          <button className={`tool-button ${activeTool === "library" ? "active" : ""}`} type="button" title="图库 · G" disabled={workspaceBusy} onClick={() => setActiveTool("library")}><LibraryIcon /><span>图库</span></button>
+          <div className="tool-rule" />
+          <button className={`tool-button ${activeTool === "adjust" ? "active" : ""}`} type="button" title="调色 · D（兼容 E）" disabled={workspaceBusy} onClick={() => setActiveTool("adjust")}><AdjustIcon /><span>调色</span></button>
+          <button className={`tool-button ${activeTool === "crop" ? "active" : ""}`} type="button" title="裁剪 · R（兼容 C）" disabled={!photo || workspaceBusy} onClick={() => setActiveTool("crop")}><CropIcon /><span>裁剪</span></button>
+          <button className={`tool-button ${activeTool === "mask" ? "active" : ""}`} type="button" title="蒙版 · M" disabled={!photo || workspaceBusy} onClick={() => setActiveTool("mask")}><MaskIcon /><span>蒙版</span></button>
+          <button className={`tool-button ${activeTool === "preset" ? "active" : ""}`} type="button" title="预设 · P" disabled={workspaceBusy} onClick={() => setActiveTool("preset")}><PresetIcon /><span>预设</span></button>
+          <button className={`tool-button ${activeTool === "export" ? "active" : ""}`} type="button" disabled={(!photo && selectedPhotoIds.length === 0) || workspaceBusy}
+            title="导出 · ⌘/Ctrl+Shift+E（兼容 X）" onClick={() => setActiveTool("export")}><ExportIcon /><span>导出</span></button>
+          <div className="gpu-badge"><i />GPU</div>
+        </aside>
+      </section>
     </main>
   );
 }
@@ -687,6 +734,19 @@ function loadPresets(): DevelopPreset[] {
     }) : [];
   } catch {
     return [];
+  }
+}
+
+function loadWorkspaceTheme(): WorkspaceTheme {
+  try { return normalizeWorkspaceTheme(localStorage.getItem(THEME_STORAGE_KEY)); } catch { return "dark"; }
+}
+
+function loadInspectorWidth(): number {
+  try {
+    const width = Number(localStorage.getItem(INSPECTOR_WIDTH_STORAGE_KEY));
+    return Number.isFinite(width) && width > 0 ? clampInspectorWidth(width) : 340;
+  } catch {
+    return 340;
   }
 }
 
