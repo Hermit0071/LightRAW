@@ -3,6 +3,7 @@ import {
   addCurvePoint,
   moveCurvePoint,
   removeCurvePoint,
+  sampleCurve,
   type CurveChannel,
   type CurvePoint,
   type ToneCurves,
@@ -19,10 +20,13 @@ export function ToneCurveEditor({ curves, disabled, onChange }: {
   onChange: (curves: ToneCurves) => void;
 }) {
   const [channel, setChannel] = useState<CurveChannel>("master");
-  const [dragging, setDragging] = useState<number | null>(null);
+  const dragging = useRef<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const curve = curves[channel];
   const colour = channel === "master" ? "#e6e4dc" : channel;
+  const path = sampleCurve(curve, 121)
+    .map((point, index) => `${index === 0 ? "M" : "L"}${point.x * 240} ${(1 - point.y) * 150}`)
+    .join(" ");
 
   function position(event: ReactPointerEvent<SVGSVGElement | SVGCircleElement>): CurvePoint {
     const bounds = svgRef.current!.getBoundingClientRect();
@@ -53,16 +57,20 @@ export function ToneCurveEditor({ curves, disabled, onChange }: {
           update(addCurvePoint(curve, position(event)));
         }}
         onPointerMove={(event) => {
-          if (dragging !== null) update(moveCurvePoint(curve, dragging, position(event)));
+          if (dragging.current !== null) update(moveCurvePoint(curve, dragging.current, position(event)));
         }}
-        onPointerUp={() => setDragging(null)}
-        onPointerCancel={() => setDragging(null)}
+        onPointerUp={(event) => {
+          dragging.current = null;
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+        }}
+        onPointerCancel={() => { dragging.current = null; }}
+        onLostPointerCapture={() => { dragging.current = null; }}
       >
         <path className="curve-grid" d="M0 37.5H240M0 75H240M0 112.5H240M60 0V150M120 0V150M180 0V150" />
-        <polyline
+        <path
           className="curve-line"
           style={{ stroke: colour }}
-          points={curve.map((point) => `${point.x * 240},${(1 - point.y) * 150}`).join(" ")}
+          d={path}
         />
         {curve.map((point, index) => (
           <circle
@@ -74,8 +82,8 @@ export function ToneCurveEditor({ curves, disabled, onChange }: {
             onPointerDown={(event) => {
               if (disabled) return;
               event.stopPropagation();
-              event.currentTarget.setPointerCapture(event.pointerId);
-              setDragging(index);
+              svgRef.current?.setPointerCapture(event.pointerId);
+              dragging.current = index;
             }}
             onDoubleClick={() => update(removeCurvePoint(curve, index))}
           />

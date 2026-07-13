@@ -5,6 +5,7 @@ import {
   evaluateCurve,
   moveCurvePoint,
   removeCurvePoint,
+  sampleCurve,
 } from "./tone-curve";
 
 describe("tone curve", () => {
@@ -41,5 +42,31 @@ describe("tone curve", () => {
     const value = evaluateCurve(curve, 0.5);
     expect(value).toBeGreaterThan(0.2);
     expect(value).toBeLessThan(0.8);
+  });
+
+  it("keeps the slope continuous through control points instead of drawing segments", () => {
+    const curve = [{ x: 0, y: 0 }, { x: 0.5, y: 0.2 }, { x: 1, y: 1 }];
+    const epsilon = 0.0001;
+    const knot = evaluateCurve(curve, 0.5);
+    const slopeBefore = (knot - evaluateCurve(curve, 0.5 - epsilon)) / epsilon;
+    const slopeAfter = (evaluateCurve(curve, 0.5 + epsilon) - knot) / epsilon;
+
+    expect(Math.abs(slopeBefore - slopeAfter)).toBeLessThan(0.01);
+    expect(evaluateCurve(curve, 0.25)).not.toBeCloseTo(0.1, 4);
+  });
+
+  it("samples a smooth curve without overshooting any pair of neighbouring handles", () => {
+    const curve = [{ x: 0, y: 0.1 }, { x: 0.25, y: 0.8 }, { x: 0.6, y: 0.3 }, { x: 1, y: 0.9 }];
+    const samples = sampleCurve(curve, 401);
+
+    expect(samples[0]).toEqual({ x: 0, y: 0.1 });
+    expect(samples.at(-1)).toEqual({ x: 1, y: 0.9 });
+    for (const sample of samples) {
+      const rightIndex = curve.findIndex((point) => sample.x <= point.x);
+      const left = curve[Math.max(0, rightIndex - 1)];
+      const right = curve[Math.max(0, rightIndex)];
+      expect(sample.y).toBeGreaterThanOrEqual(Math.min(left.y, right.y) - 0.000001);
+      expect(sample.y).toBeLessThanOrEqual(Math.max(left.y, right.y) + 0.000001);
+    }
   });
 });
