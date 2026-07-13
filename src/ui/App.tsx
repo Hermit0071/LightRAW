@@ -150,7 +150,7 @@ export default function App() {
   const [library, setLibrary] = useState<LibraryPhoto[]>([]);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [activePhotoId, setActivePhotoId] = useState<string | null>(null);
-  const [selectedPhotoIds, setSelectedPhotoIds] = useState<string[]>([]);
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState<ReadonlySet<string>>(() => new Set());
   const [librarySort, setLibrarySort] = useState<LibrarySort>("importedAt");
   const [managementDialog, setManagementDialog] = useState<LibraryManagementDialogMode | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -168,12 +168,11 @@ export default function App() {
   libraryRef.current = library;
   catalogLoadedRef.current = catalogLoaded;
   activePhotoIdRef.current = activePhotoId;
-  const selectedPhotoIdSet = new Set(selectedPhotoIds);
   const workspaceBusy = !catalogLoaded || status === "loading" || !!exportProgress || !!fileOperationProgress;
   const sortedLibrary = sortPhotos(library, librarySort);
-  const visibleLibrary = filterLibraryPhotos(sortedLibrary, libraryCollection, selectedPhotoIdSet);
+  const visibleLibrary = filterLibraryPhotos(sortedLibrary, libraryCollection, selectedPhotoIds);
   const showFilmstrip = activeTool !== "library" && visibleLibrary.length > 0;
-  const selectedPhotos = library.filter((item) => selectedPhotoIdSet.has(item.id));
+  const selectedPhotos = sortedLibrary.filter((item) => selectedPhotoIds.has(item.id));
   const selectedLayer = recipe.layers.find((layer) => layer.id === selectedLayerId) ?? null;
   const selectedMask = selectedLayer?.mask.components.find((mask) => mask.id === selectedMaskId && mask.visible) ?? null;
 
@@ -309,7 +308,7 @@ export default function App() {
         return;
       }
       setStatus("loading");
-      setSelectedPhotoIds([]);
+      setSelectedPhotoIds(new Set());
       const known = new Set(library.map((item) => item.path));
       const imported: LibraryPhoto[] = [];
       const failures: string[] = [];
@@ -332,7 +331,7 @@ export default function App() {
           const nextLibrary = mergeImportedPhotos(libraryRef.current, [item]);
           libraryRef.current = nextLibrary;
           setLibrary(nextLibrary);
-          setSelectedPhotoIds((current) => [...current, item.id]);
+          setSelectedPhotoIds((current) => new Set(current).add(item.id));
         } catch (error) {
           failures.push(`${path}: ${error instanceof Error ? error.message : String(error)}`);
         }
@@ -448,7 +447,12 @@ export default function App() {
   }
 
   function togglePhotoSelection(id: string) {
-    setSelectedPhotoIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+    setSelectedPhotoIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   function changeRating(id: string, rating: PhotoRating) {
@@ -500,7 +504,7 @@ export default function App() {
       const next = mergeImportedPhotos(libraryRef.current, copies);
       libraryRef.current = next;
       setLibrary(next);
-      setSelectedPhotoIds(copies.map((item) => item.id));
+      setSelectedPhotoIds(new Set(copies.map((item) => item.id)));
       reportFileOutcomes("复制", outcomes);
     } catch (error) {
       showFileOperationError(error);
@@ -589,7 +593,7 @@ export default function App() {
     const next = removePhotos(libraryRef.current, ids);
     libraryRef.current = next;
     setLibrary(next);
-    setSelectedPhotoIds((current) => current.filter((id) => !ids.has(id)));
+    setSelectedPhotoIds((current) => new Set([...current].filter((id) => !ids.has(id))));
     if (activePhotoIdRef.current && ids.has(activePhotoIdRef.current)) {
       activePhotoIdRef.current = null;
       rendererRef.current?.clearImage();
@@ -629,7 +633,7 @@ export default function App() {
   }
 
   async function exportSelectedPhotos() {
-    const items = library.filter((item) => selectedPhotoIdSet.has(item.id))
+    const items = library.filter((item) => selectedPhotoIds.has(item.id))
       .map((item) => item.id === activePhotoId ? { ...item, recipe: recipeRef.current } : item);
     if (items.length === 0) return;
     const directory = await chooseExportDirectory();
@@ -817,14 +821,14 @@ export default function App() {
       </header>
 
       <WorkspaceNavigator collection={libraryCollection} total={library.length}
-        rated={library.filter((item) => item.rating > 0).length} selected={selectedPhotoIds.length}
+        rated={library.filter((item) => item.rating > 0).length} selected={selectedPhotoIds.size}
         theme={workspaceTheme} gpuStatus={gpuStatus} onTheme={setWorkspaceTheme}
         onCollection={(collection) => { setLibraryCollection(collection); setActiveTool("library"); }} />
 
       <section className={`editor-stage ${showFilmstrip ? "" : "without-filmstrip"}`}>
         <section className={`viewport ${activeTool === "crop" ? "crop-active" : ""}`} aria-label="照片预览">
           <canvas ref={canvasRef} />
-          {activeTool === "library" && <LibraryGrid photos={visibleLibrary} activeId={activePhotoId} selectedIds={selectedPhotoIdSet}
+          {activeTool === "library" && <LibraryGrid photos={visibleLibrary} activeId={activePhotoId} selectedIds={selectedPhotoIds}
             onOpen={(item) => void openLibraryPhoto(item)} onToggle={togglePhotoSelection} onRate={changeRating} />}
           {!photo && activeTool !== "library" && status !== "loading" && <EmptyState onOpen={openPhoto} />}
           {status === "loading" && <div className="loading-state"><span className="spinner" /><strong>构建线性预览</strong><span>{message}</span></div>}
@@ -855,10 +859,10 @@ export default function App() {
             setInspectorWidth((width) => clampInspectorWidth(width + (event.key === "ArrowLeft" ? 12 : -12)));
           }} />
         <div className="inspector-content">{activeTool === "library" ? (
-          <LibraryPanel count={visibleLibrary.length} selectedCount={selectedPhotoIds.length} sort={librarySort} busy={workspaceBusy}
+          <LibraryPanel count={visibleLibrary.length} selectedCount={selectedPhotoIds.size} sort={librarySort} busy={workspaceBusy}
             progress={fileOperationProgress}
-            onSort={setLibrarySort} onImport={openPhoto} onSelectAll={() => setSelectedPhotoIds(visibleLibrary.map((item) => item.id))}
-            onClear={() => setSelectedPhotoIds([])} onReveal={() => void revealSelectedPhoto()} onRename={openRenameDialog}
+            onSort={setLibrarySort} onImport={openPhoto} onSelectAll={() => setSelectedPhotoIds(new Set(visibleLibrary.map((item) => item.id)))}
+            onClear={() => setSelectedPhotoIds(new Set())} onReveal={() => void revealSelectedPhoto()} onRename={openRenameDialog}
             onCopy={() => void copySelectedPhotos()} onMove={() => void moveSelectedPhotos()} onDelete={openDeleteDialog} />
         ) : activeTool === "adjust" ? (
           <AdjustmentPanel recipe={recipe} histogram={histogram} disabled={!photo} onChange={setRecipe} onReset={resetCurrentPanel} />
@@ -877,7 +881,7 @@ export default function App() {
             onApply={(preset) => setRecipe((current) => applyPreset(current, preset))} onImport={importPreset}
             onExport={exportPreset} onDelete={(id) => replacePresets(presets.filter((preset) => preset.id !== id))} />
         ) : (
-          <ExportPanel options={exportOptions} disabled={!activePhotoId || !!exportProgress} selectedCount={selectedPhotoIds.length}
+          <ExportPanel options={exportOptions} disabled={!activePhotoId || !!exportProgress} selectedCount={selectedPhotoIds.size}
             progress={exportProgress} onChange={setExportOptions} onCurrent={() => void exportCurrentPhoto()}
             onBatch={() => void exportSelectedPhotos()} />
         )}</div>
@@ -888,7 +892,7 @@ export default function App() {
           <button className={`tool-button ${activeTool === "crop" ? "active" : ""}`} type="button" title="裁剪 · R（兼容 C）" disabled={!photo || workspaceBusy} onClick={() => setActiveTool("crop")}><CropIcon /><span>裁剪</span></button>
           <button className={`tool-button ${activeTool === "mask" ? "active" : ""}`} type="button" title="蒙版 · M" disabled={!photo || workspaceBusy} onClick={() => setActiveTool("mask")}><MaskIcon /><span>蒙版</span></button>
           <button className={`tool-button ${activeTool === "preset" ? "active" : ""}`} type="button" title="预设 · P" disabled={workspaceBusy} onClick={() => setActiveTool("preset")}><PresetIcon /><span>预设</span></button>
-          <button className={`tool-button ${activeTool === "export" ? "active" : ""}`} type="button" disabled={(!photo && selectedPhotoIds.length === 0) || workspaceBusy}
+          <button className={`tool-button ${activeTool === "export" ? "active" : ""}`} type="button" disabled={(!photo && selectedPhotoIds.size === 0) || workspaceBusy}
             title="导出 · ⌘/Ctrl+Shift+E（兼容 X）" onClick={() => setActiveTool("export")}><ExportIcon /><span>导出</span></button>
           <div className={`gpu-badge ${gpuStatus}`}><i />GPU</div>
         </aside>

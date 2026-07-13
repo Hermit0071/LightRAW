@@ -3,7 +3,7 @@ import type { LibraryPhoto, PhotoRating } from "../library/catalog";
 export function LibraryGrid({ photos, activeId, selectedIds, onOpen, onToggle, onRate }: {
   photos: LibraryPhoto[];
   activeId: string | null;
-  selectedIds: Set<string>;
+  selectedIds: ReadonlySet<string>;
   onOpen: (photo: LibraryPhoto) => void;
   onToggle: (id: string) => void;
   onRate: (id: string, rating: PhotoRating) => void;
