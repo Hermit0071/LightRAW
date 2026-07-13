@@ -570,7 +570,7 @@ export default function App() {
       onBlurCapture={(event) => { if (isRecipeTextInput(event.target)) endEditTransaction("text"); }}>
       <header className="topbar">
         <div className="brand" aria-label="LightRAW">
-          <span className="brand-mark">Lr</span><span className="brand-name">LightRAW</span><span className="phase-tag">PHASE 05</span>
+          <span className="brand-mark" aria-hidden="true"><ApertureIcon /></span><span className="brand-name">LightRAW</span><span className="phase-tag">PHASE 05</span>
         </div>
         <div className="file-summary">
           {photo ? <><strong>{photo.fileName}</strong><span>{photo.sourceWidth} × {photo.sourceHeight}</span></> : <span>非破坏性 RAW 工作区</span>}
@@ -672,7 +672,15 @@ function MaskIcon() { return <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r=
 function PresetIcon() { return <svg viewBox="0 0 24 24"><path d="m12 3 2.4 5.2L20 9l-4 4 .9 5.7L12 16l-4.9 2.7L8 13 4 9l5.6-.8z"/></svg>; }
 function LibraryIcon() { return <svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/></svg>; }
 function ExportIcon() { return <svg viewBox="0 0 24 24"><path d="M12 15V3m0 0L8 7m4-4 4 4M5 12v8h14v-8"/></svg>; }
-function ApertureIcon() { return <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="26"/><path d="m18 11 15 21M53 18l-21 14M53 46H29M18 53l14-21M11 18l21 14M11 46l21-14"/></svg>; }
+function ApertureIcon() { return <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="26"/>
+  <path d="M32 6a26 26 0 0 1 22.5 13L43.4 32a11.4 11.4 0 0 0-5.7-9.9Z"/>
+  <path d="M32 6a26 26 0 0 1 22.5 13L43.4 32a11.4 11.4 0 0 0-5.7-9.9Z" transform="rotate(60 32 32)"/>
+  <path d="M32 6a26 26 0 0 1 22.5 13L43.4 32a11.4 11.4 0 0 0-5.7-9.9Z" transform="rotate(120 32 32)"/>
+  <path d="M32 6a26 26 0 0 1 22.5 13L43.4 32a11.4 11.4 0 0 0-5.7-9.9Z" transform="rotate(180 32 32)"/>
+  <path d="M32 6a26 26 0 0 1 22.5 13L43.4 32a11.4 11.4 0 0 0-5.7-9.9Z" transform="rotate(240 32 32)"/>
+  <path d="M32 6a26 26 0 0 1 22.5 13L43.4 32a11.4 11.4 0 0 0-5.7-9.9Z" transform="rotate(300 32 32)"/>
+  <circle cx="32" cy="32" r="10"/>
+</svg>; }
 
 function loadPresets(): DevelopPreset[] {
   try {

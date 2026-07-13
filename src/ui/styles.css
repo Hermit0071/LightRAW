@@ -34,8 +34,9 @@ button { color: inherit; }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .brand-mark {
   display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px;
-  background: #d7ff45; color: #161712; font-size: 13px; font-weight: 800; letter-spacing: -0.04em;
+  background: #d7ff45; color: #161712;
 }
+.brand-mark svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 3; }
 .brand-name { font-size: 14px; font-weight: 680; letter-spacing: 0.01em; }
 .phase-tag {
   margin-left: 4px; padding: 3px 6px; border: 1px solid #393a34; border-radius: 4px;

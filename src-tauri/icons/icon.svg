@@ -1,6 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
   <rect width="1024" height="1024" rx="224" fill="#161714"/>
-  <circle cx="512" cy="512" r="302" fill="none" stroke="#e7dfcf" stroke-width="54"/>
-  <path d="M335 319v386h354" fill="none" stroke="#d6ff45" stroke-linecap="round" stroke-linejoin="round" stroke-width="74"/>
-  <circle cx="676" cy="354" r="58" fill="#d6ff45"/>
+  <circle cx="512" cy="512" r="322" fill="#d6ff45"/>
+  <g fill="#e7dfcf" stroke="#161714" stroke-linejoin="round" stroke-width="18">
+    <path d="M512 210a302 302 0 0 1 262 151L644 512a132 132 0 0 0-66-114Z"/>
+    <path d="M512 210a302 302 0 0 1 262 151L644 512a132 132 0 0 0-66-114Z" transform="rotate(60 512 512)"/>
+    <path d="M512 210a302 302 0 0 1 262 151L644 512a132 132 0 0 0-66-114Z" transform="rotate(120 512 512)"/>
+    <path d="M512 210a302 302 0 0 1 262 151L644 512a132 132 0 0 0-66-114Z" transform="rotate(180 512 512)"/>
+    <path d="M512 210a302 302 0 0 1 262 151L644 512a132 132 0 0 0-66-114Z" transform="rotate(240 512 512)"/>
+    <path d="M512 210a302 302 0 0 1 262 151L644 512a132 132 0 0 0-66-114Z" transform="rotate(300 512 512)"/>
+  </g>
+  <circle cx="512" cy="512" r="116" fill="#161714" stroke="#d6ff45" stroke-width="24"/>
 </svg>
