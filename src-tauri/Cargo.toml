@@ -11,8 +11,8 @@ rev = "2026.05.25"
 dependencies = []
 
 [package.metadata.vcpkg.target]
-x86_64-pc-windows-msvc = { triplet = "x64-windows", dependencies = ["libraw", "libheif"] }
-aarch64-pc-windows-msvc = { triplet = "arm64-windows", dependencies = ["libraw", "libheif"] }
+x86_64-pc-windows-msvc = { triplet = "x64-windows-static-md", dependencies = ["libraw", "libheif"] }
+aarch64-pc-windows-msvc = { triplet = "arm64-windows-static-md", dependencies = ["libraw", "libheif"] }
 
 [lib]
 name = "lightraw_lib"
