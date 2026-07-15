@@ -1,4 +1,4 @@
-#include <libraw.h>
+#include <libraw/libraw.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
