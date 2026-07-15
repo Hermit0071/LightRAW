@@ -31,6 +31,11 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE 'src-tauri\target\vcpkg'
+          git clone https://github.com/microsoft/vcpkg.git $vcpkgRoot
+          & "$vcpkgRoot\bootstrap-vcpkg.bat"
+          & "$vcpkgRoot\vcpkg.exe" install libraw:x64-windows-static-md libheif:x64-windows-static-md
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding ascii -Append
           cargo install cargo-vcpkg --version 0.1.7
           cd src-tauri
           cargo vcpkg build
